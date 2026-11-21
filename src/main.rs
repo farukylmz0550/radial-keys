@@ -14,7 +14,8 @@ async fn main() -> anyhow::Result<()> {
     let store = ConfigStore::default_path()?;
     let config = store.load_or_default()?;
     let shared = Arc::new(RwLock::new(config));
-    let backend = Backend::new(shared.clone(), store);
+    let portal = portal::probe().await;
+    let backend = Backend::new(shared.clone(), store, portal.clone());
     let connection = zbus::connection::Builder::session()?
         .name("org.radialkeys.Backend1")?
         .serve_at("/org/radialkeys/Backend1", backend)?
@@ -22,7 +23,6 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("failed to acquire the radial-keys session bus name")?;
 
-    let portal = portal::probe().await;
     eprintln!("radial-keys: {portal}");
     eprintln!("radial-keys: D-Bus service ready on {}", connection.unique_name().unwrap_or_default());
 
