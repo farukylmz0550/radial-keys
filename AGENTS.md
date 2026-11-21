@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This repository is currently empty: no application source, tests, assets, or build configuration are present. Keep future code organized by purpose (for example, `src/` for implementation, `tests/` for automated checks, and `assets/` for checked-in resources). Update this guide when the project structure is established; avoid adding generated output, dependency caches, or local secrets to version control.
+Keep implementation organized by area under `src/`: backend files belong in `src/backend/`, and frontend files belong in `src/frontend/`. Do not add new backend or frontend modules directly to the `src/` root. Keep automated checks under `tests/` or beside their implementation according to the chosen framework, and checked-in resources under `assets/`. Avoid adding generated output, dependency caches, or local secrets to version control.
 
 ## Build, Test, and Development Commands
 

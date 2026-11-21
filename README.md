@@ -129,15 +129,19 @@ On Wayland, applications cannot generally observe arbitrary keyboard events glob
 
 Until those behaviors are demonstrated on the target compositor, hold-mode global activation is considered **unverified**. The backend does not silently change modes or use privileged input interception.
 
-## Project layout
+## Project structure
+
+Keep implementation files grouped by area under `src/`: backend modules belong in `src/backend/` and frontend modules belong in `src/frontend/`. The current backend files have not yet been moved into that structure.
 
 ```text
 src/
-├── config.rs     # Defaults, validation, TOML load/save
-├── dbus.rs       # Versioned session-bus API
-├── portal.rs     # GlobalShortcuts availability probe
-├── shortcuts.rs  # Shortcut parser and activation state machine
-└── main.rs       # Backend startup
+├── backend/
+│   ├── config.rs
+│   ├── dbus.rs
+│   ├── portal.rs
+│   └── shortcuts.rs
+├── frontend/
+└── main.rs
 ```
 
 ## License
