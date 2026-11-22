@@ -1,6 +1,6 @@
 [package]
 name = "radial-keys"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 description = "A D-Bus backend for a customizable radial action menu"
 license = "MIT"

@@ -1,5 +1,5 @@
 Name:           radial-keys
-Version:        0.1.0
+Version:        1.0.0
 Release:        1%{?dist}
 Summary:        Customizable radial action menu for Linux
 License:        MIT
@@ -56,5 +56,5 @@ install -Dpm0644 packaging/udev/70-radial-keys-mouse.rules \
 %{_prefix}/lib/udev/rules.d/70-radial-keys-mouse.rules
 
 %changelog
-* Sun Nov 22 2026 Radial Keys contributors - 0.1.0-1
-- Initial backend package
+* Sun Nov 22 2026 farukylmz0550 <219123924+farukylmz0550@users.noreply.github.com> - 1.0.0-1
+- First stable release

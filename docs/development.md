@@ -32,10 +32,10 @@ systemctl --user disable --now io.github.radialkeys.Renderer.service io.github.r
 The repository includes:
 
 - Debian/Ubuntu metadata in `debian/`, built with `dpkg-buildpackage -us -uc`.
-- Fedora/RPM spec in `packaging/rpm/radial-keys.spec`; create a source archive with `git archive --format=tar.gz --prefix=radial-keys-0.1.0/ -o radial-keys-0.1.0.tar.gz HEAD`, place it in the RPM source directory, then build with `rpmbuild -ba`.
+- Fedora/RPM spec in `packaging/rpm/radial-keys.spec`; create a versioned source archive with `git archive --format=tar.gz --prefix=radial-keys-1.0.0/ -o radial-keys-1.0.0.tar.gz HEAD`, place it in the RPM source directory, then build with `rpmbuild -ba`.
 - Arch PKGBUILD in `packaging/arch/PKGBUILD`; it is checkout-oriented and builds from the repository root with `makepkg`.
 
-The RPM spec and Arch recipe currently use version `0.1.0`; update their version and source references when cutting a release. The Debian maintainer address is a reserved `.invalid` placeholder and must be replaced by the package maintainer before publishing. Package installation does not enable either user service.
+For a release, keep the Cargo, CMake, Debian, RPM, Arch, and KWin metadata versions aligned. Package installation does not enable either user service.
 
 ## Environment limits
 

@@ -1,7 +1,7 @@
 Source: radial-keys
 Section: utils
 Priority: optional
-Maintainer: Radial Keys contributors <maintainers@radial-keys.invalid>
+Maintainer: farukylmz0550 <219123924+farukylmz0550@users.noreply.github.com>
 Build-Depends: debhelper-compat (= 13), cargo, rustc, cmake, qt6-base-dev, qt6-declarative-dev
 Standards-Version: 4.7.0
 Rules-Requires-Root: no

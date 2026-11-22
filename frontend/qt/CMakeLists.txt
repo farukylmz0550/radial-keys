@@ -1,9 +1,12 @@
 cmake_minimum_required(VERSION 3.21)
-project(radial-keys-frontend VERSION 0.1.0 LANGUAGES CXX)
+project(radial-keys-frontend VERSION 1.0.0 LANGUAGES CXX)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 DBus)
 
 qt_standard_project_setup(REQUIRES 6.5)
+if(QT_KNOWN_POLICY_QTP0004)
+    qt_policy(SET QTP0004 NEW)
+endif()
 
 qt_add_executable(radial-keys-frontend
     src/main.cpp

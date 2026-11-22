@@ -1,5 +1,5 @@
-radial-keys (0.1.0-1) unstable; urgency=medium
+radial-keys (1.0.0-1) unstable; urgency=medium
 
-  * Initial backend package.
+  * First stable release with KDE desktop styling and mouse activation support.
 
- -- Radial Keys contributors <maintainers@radial-keys.invalid>  Sun, 22 Nov 2026 12:00:00 +0000
+ -- farukylmz0550 <219123924+farukylmz0550@users.noreply.github.com>  Sun, 22 Nov 2026 16:50:00 +0000
