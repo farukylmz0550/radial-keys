@@ -1,0 +1,21 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	cargo build --release --locked -p radial-keys
+	cmake -S frontend/qt -B build/frontend -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+	cmake --build build/frontend --parallel
+
+override_dh_auto_test:
+	cargo test --workspace --locked
+
+override_dh_auto_install:
+	install -D -m 0755 target/release/radial-keys debian/tmp/usr/bin/radial-keys
+	DESTDIR=debian/tmp cmake --install build/frontend
+	install -D -m 0644 packaging/systemd/io.github.radialkeys.Service.service debian/tmp/usr/lib/systemd/user/io.github.radialkeys.Service.service
+	install -D -m 0644 packaging/systemd/io.github.radialkeys.Renderer.service debian/tmp/usr/lib/systemd/user/io.github.radialkeys.Renderer.service
+	install -D -m 0644 packaging/kwin/radialkeys-cursor/metadata.json debian/tmp/usr/share/kwin/scripts/radialkeys-cursor/metadata.json
+	install -D -m 0644 packaging/kwin/radialkeys-cursor/contents/code/main.js debian/tmp/usr/share/kwin/scripts/radialkeys-cursor/contents/code/main.js
+	install -D -m 0644 packaging/udev/70-radial-keys-mouse.rules debian/tmp/usr/lib/udev/rules.d/70-radial-keys-mouse.rules

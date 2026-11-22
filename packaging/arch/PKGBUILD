@@ -1,0 +1,40 @@
+pkgname=radial-keys
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Customizable radial action menu for Linux'
+arch=('x86_64' 'aarch64')
+url='https://github.com/farukylmz0550/radial-keys'
+license=('MIT')
+depends=('dbus' 'python' 'qt6-base' 'qt6-declarative' 'qt6-wayland')
+makedepends=('cargo' 'rust' 'cmake')
+options=('!lto')
+source=()
+sha256sums=()
+
+# This checkout-oriented recipe builds directly from the repository root.
+_repo_root="$startdir/../.."
+
+build() {
+  cd "$_repo_root"
+  cargo build --release --locked
+  cmake -S frontend/qt -B build/frontend -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+  cmake --build build/frontend --parallel
+}
+
+package() {
+  cd "$_repo_root"
+  install -Dm755 target/release/radial-keys "$pkgdir/usr/bin/radial-keys"
+  DESTDIR="$pkgdir" cmake --install build/frontend
+  install -Dm644 packaging/systemd/io.github.radialkeys.Service.service \
+    "$pkgdir/usr/lib/systemd/user/io.github.radialkeys.Service.service"
+  install -Dm644 packaging/systemd/io.github.radialkeys.Renderer.service \
+    "$pkgdir/usr/lib/systemd/user/io.github.radialkeys.Renderer.service"
+  install -Dm644 packaging/kwin/radialkeys-cursor/metadata.json \
+    "$pkgdir/usr/share/kwin/scripts/radialkeys-cursor/metadata.json"
+  install -Dm644 packaging/kwin/radialkeys-cursor/contents/code/main.js \
+    "$pkgdir/usr/share/kwin/scripts/radialkeys-cursor/contents/code/main.js"
+  install -Dm644 packaging/udev/70-radial-keys-mouse.rules \
+    "$pkgdir/usr/lib/udev/rules.d/70-radial-keys-mouse.rules"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}

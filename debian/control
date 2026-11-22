@@ -1,0 +1,15 @@
+Source: radial-keys
+Section: utils
+Priority: optional
+Maintainer: Radial Keys contributors <maintainers@radial-keys.invalid>
+Build-Depends: debhelper-compat (= 13), cargo, rustc, cmake, qt6-base-dev, qt6-declarative-dev
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Homepage: https://github.com/farukylmz0550/radial-keys
+
+Package: radial-keys
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}, dbus, python3, qt6-base-plugins, qt6-wayland, qml6-module-qtquick, qml6-module-qtquick-window, qml6-module-qtquick-controls, qml6-module-qtquick-dialogs
+Description: customizable radial action menu for Linux
+ Radial Keys provides an independent Rust session backend and a Qt Quick
+ renderer for a customizable eight-slot radial action menu.

@@ -2,11 +2,11 @@
 
 ## Project Structure & Module Organization
 
-Keep implementation organized by area under `src/`: backend files belong in `src/backend/`, and frontend files belong in `src/frontend/`. Do not add new backend or frontend modules directly to the `src/` root. Keep automated checks under `tests/` or beside their implementation according to the chosen framework, and checked-in resources under `assets/`. Avoid adding generated output, dependency caches, or local secrets to version control.
+This repository is a Cargo workspace. Backend Rust code belongs in `backend/src/`, organized by responsibility; the planned Qt frontend belongs in `frontend/qt/`. Keep automated checks under `tests/` or beside their implementation according to the chosen framework, and checked-in resources under `assets/`. Avoid adding generated output, dependency caches, or local secrets to version control.
 
 ## Build, Test, and Development Commands
 
-There are no project-specific build, test, or run commands yet. When adding a language or framework, include its dependency manifest and document the exact setup, development, build, and test commands here. Prefer reproducible commands that work from the repository root, such as `npm run build` or `cargo test`, only when the corresponding project configuration exists.
+Use `cargo build --release --locked`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo fmt --all -- --check` from the repository root. Document additional frontend and packaging commands in `docs/development.md`.
 
 ## Coding Style & Naming Conventions
 
@@ -14,7 +14,7 @@ Follow the formatter and linter configured for the chosen language. Until those 
 
 ## Testing Guidelines
 
-No test framework or coverage target is configured. Add tests with the first behavior that needs verification, keep test files grouped under `tests/` or beside their implementation according to the selected framework, and name them after the behavior they cover. Document the command that runs the full suite and any required local setup.
+Rust unit tests live beside the implementation. Run the full suite with `cargo test --workspace`; document additional integration setup in `docs/development.md`.
 
 ## Commit & Pull Request Guidelines
 

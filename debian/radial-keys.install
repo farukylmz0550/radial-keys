@@ -1,0 +1,7 @@
+usr/bin/radial-keys
+usr/bin/radial-keys-frontend
+usr/lib/systemd/user/io.github.radialkeys.Service.service
+usr/lib/systemd/user/io.github.radialkeys.Renderer.service
+packaging/kwin/radialkeys-cursor/metadata.json usr/share/kwin/scripts/radialkeys-cursor/
+packaging/kwin/radialkeys-cursor/contents/code/main.js usr/share/kwin/scripts/radialkeys-cursor/contents/code/
+packaging/udev/70-radial-keys-mouse.rules usr/lib/udev/rules.d/

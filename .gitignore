@@ -1,1 +1,10 @@
 /target
+/build
+/debian/.debhelper
+/debian/files
+/debian/radial-keys/
+/packaging/arch/pkg/
+/packaging/arch/src/
+*.deb
+*.rpm
+*.pkg.tar.*

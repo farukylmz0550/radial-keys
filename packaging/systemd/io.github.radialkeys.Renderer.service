@@ -1,0 +1,13 @@
+[Unit]
+Description=Radial Keys Qt menu renderer
+Wants=io.github.radialkeys.Service.service
+After=io.github.radialkeys.Service.service graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/radial-keys-frontend
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

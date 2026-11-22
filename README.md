@@ -2,54 +2,66 @@
 
 # radial-keys
 
-**A small, keyboard-first foundation for radial menus on Linux.**
+**A native, customizable radial action menu for Linux.**
 
-Rust · D-Bus · Wayland-aware
+Rust · D-Bus · Qt 6/QML · Wayland-aware
 
 </div>
 
-`radial-keys` is an early-stage backend for a radial keyboard menu. It provides an eight-slot TOML configuration, shortcut parsing, hold/toggle activation state, and a versioned session D-Bus interface. The backend is kept independent of any GUI toolkit so a future menu can be built separately.
+Radial Keys uses an independent Rust session backend and a replaceable Qt 6/QML renderer. On KDE Plasma Wayland, press `Ctrl+Shift+Y` once to open the eight-segment menu and again to close it. Escape or a click outside a segment cancels it. The menu uses compositor cursor coordinates.
 
-> **Status:** Phase 1 foundation. There is no graphical menu yet, and global shortcut registration is not enabled. The XDG GlobalShortcuts portal is only probed for availability; keyboard activation and key-release behavior have not been verified on KDE Wayland.
+> **Status:** Backend and Qt Quick renderer are in place. Global shortcut registration is opt-in through the desktop portal. Eight Python macro slots can be configured from the GUI.
 
-## What’s here
+## Current features
 
-- Eight configurable radial slots with stable IDs, labels, and action strings
-- `X` as the default shortcut, in hold mode
+- Eight configurable slots with stable IDs, labels, and action strings
+- GUI editor for all eight slot labels, Python macro files, and PNG/JPEG/SVG icons
+- Direct `python3 /absolute/path/to/macro.py` execution when a populated wheel segment is selected (no shell)
+- `Ctrl+Shift+Y` as the default keyboard activation shortcut, stored in editable TOML configuration
+- GUI configuration for keyboard or mouse activation input and a selectable mouse button; the evdev/uinput helper reserves only the configured button on the first detected mouse and relays the remaining events
+- KDE Plasma Wayland cursor coordinates forwarded by a small KWin script so the menu can open at the pointer
 - Canonical parsing for keys and modifier combinations
-- Hold and toggle state transitions, including cancellation and duplicate-event handling
+- Toggle activation by default, with cancellation and duplicate-event handling
 - Validated TOML configuration with atomic writes
-- A versioned D-Bus API for status, configuration, shortcut changes, and menu requests
-- A portal availability probe that reports its limits instead of claiming global activation works
+- Versioned session D-Bus API
+- Eight-segment Qt Quick overlay with directional highlighting and Escape cancellation
+- Native package definitions for DEB, RPM, and Arch Linux
 
-## Requirements
+See [Python macros](docs/macros.md) for assigning and writing slot scripts.
 
-- Rust and Cargo (edition 2024)
+Mouse activation is opt-in. The backend opens the first detected relative mouse, suppresses the configured activation button, and relays its other events through a virtual mouse. Packages install a udev rule granting the active desktop user access only to mouse-classified input devices. A running mouse may need to be reconnected after installing the package. The renderer runs separately and reports its heartbeat to the backend.
+
+## Requirements and development
+
+- Rust stable and Cargo (edition 2024)
+- CMake and Qt 6 development modules to build the renderer
 - A running user session D-Bus
-- XDG desktop portal components for the optional GlobalShortcuts availability probe
-
-No Qt or privileged input access is used. This phase does not install an evdev/uinput helper.
-
-## Build and run
+- XDG Desktop Portal components for the optional GlobalShortcuts probe
 
 From the repository root:
 
 ```sh
 cargo build --release
-cargo test
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
 cargo run --release
 ```
 
-The backend claims the session-bus name `org.radialkeys.Backend1` and serves the object `/org/radialkeys/Backend1`. Press `Ctrl+C` to stop it. A systemd user unit and install/uninstall workflow have not been added yet.
+The backend claims `io.github.radialkeys.Service` and serves `/io/github/radialkeys/Service` with interface `io.github.radialkeys.Service1`. The frontend binary is `radial-keys-frontend`; both processes can run as separate user services.
 
 ## Configuration
 
-The backend reads `config.toml` from its XDG application configuration directory. If the file is missing, it starts with these defaults:
+The backend reads `config.toml` from its XDG application configuration directory. A first run uses these defaults:
 
 ```toml
 version = 1
-shortcut = "X"
-mode = "hold"
+
+[activation]
+type = "keyboard"
+key = "Y"
+modifiers = ["Ctrl", "Shift"]
+mode = "toggle"
+enabled = false
 
 [[slots]]
 id = "north"
@@ -92,58 +104,67 @@ label = "Slot 8"
 action = ""
 ```
 
-Exactly eight slots are required. Slot IDs must be unique, labels must not be blank, and the shortcut must contain one key with optional modifiers. For example, `Ctrl+Shift+Space` is canonicalized to `Ctrl+Shift+Space`. `Escape` is reserved for cancellation. Configuration updates are validated and written through a temporary file before replacing the saved file; invalid updates leave the active configuration unchanged.
+Exactly eight slots are required. Slot IDs must be unique, labels must not be blank, and the activation shortcut must contain one key with optional modifiers. For example, `Ctrl+Shift+Space` is canonicalized to `Ctrl+Shift+Space`. `Escape` is reserved for cancellation. Supported generic modifiers are `Ctrl`, `Alt`, `Shift`, and `Super`; common keys, alphanumeric keys, and `F1`–`F24` are accepted.
 
-Supported modifiers are `Ctrl`, `Alt`, `Shift`, and `Super`. Common key names, alphanumeric keys, and `F1`–`F24` are accepted.
+Invalid updates leave the active configuration unchanged. Writes use a temporary file followed by an atomic replacement. Corrupt configuration is reported and preserved for recovery.
 
 ## D-Bus API
 
-The interface is `org.radialkeys.Backend1` at `/org/radialkeys/Backend1`.
+The interface is `io.github.radialkeys.Service1` at `/io/github/radialkeys/Service`.
 
 | Method | Purpose |
 | --- | --- |
-| `GetStatus()` | Returns JSON status, including backend/menu availability and portal-probe result |
-| `GetConfiguration()` | Returns the current TOML configuration |
-| `GetShortcut()` | Reads the current shortcut |
-| `SetShortcut(s)` | Validates, saves, and applies a shortcut change |
-| `SetMode(s)` | Sets `hold` or `toggle` mode |
-| `ShowMenu()` | Requests that the backend open its menu state |
-| `HideMenu()` | Requests that the backend close its menu state |
-| `CancelMenu()` | Cancels the current menu state |
-| `SelectSlot(u)` | Selects a slot and returns its configured action string |
+| `Ping()` | Checks whether the service responds |
+| `GetVersion()` | Returns the backend package version |
+| `GetStatus()` | Returns JSON service, renderer, menu, and portal status |
+| `GetConfiguration()` | Returns current TOML configuration |
+| `GetActivationShortcut()` | Reads the current shortcut |
+| `SetActivationShortcut(s)` | Validates and persists a shortcut change |
+| `SetGlobalActivationEnabled(b)` | Explicitly registers or disables the shortcut through the desktop portal |
+| `SetMode(s)` | Sets `hold` or `toggle` |
+| `ShowMenu()` / `HideMenu()` / `CancelMenu()` | Changes backend menu state |
+| `SelectSlot(u)` | Returns a configured action string for a selected slot |
+| `GetSlots()` / `SetSlotDetails(u, s, s, s)` | Reads or saves slot labels, Python macro paths, and icon paths |
+| `ActivateSlot(u)` | Launches the configured Python macro and closes the menu |
 
-For example, inspect the current status with `gdbus`:
+For example:
 
 ```sh
 gdbus call --session \
-  --dest org.radialkeys.Backend1 \
-  --object-path /org/radialkeys/Backend1 \
-  --method org.radialkeys.Backend1.GetStatus
+  --dest io.github.radialkeys.Service \
+  --object-path /io/github/radialkeys/Service \
+  --method io.github.radialkeys.Service1.GetStatus
 ```
 
-Menu methods currently operate on backend state only. There is no GUI to display, and a selected action string is not executed by this foundation.
+`ShowMenu()` opens the overlay for a preview. Assign a `.py` file to a slot in the settings window; selecting that segment starts the macro as the current user. `GetStatus()` reports renderer availability from its heartbeat.
 
-## Wayland and global shortcuts
+## Wayland shortcut limits
 
-On Wayland, applications cannot generally observe arbitrary keyboard events globally. `radial-keys` checks whether the session portal exposes `org.freedesktop.portal.GlobalShortcuts`; it does not create a portal session or register the configured shortcut yet. In particular, portal availability alone does not prove that a requested key combination is supported or that activation and deactivation reliably correspond to key press and release.
+Wayland does not let ordinary applications observe arbitrary global keyboard input. The desktop registers the shortcut through the XDG GlobalShortcuts portal. On KDE Plasma, the KWin script observes cursor coordinates only; it does not register a second shortcut, intercept or log keyboard input. Radial Keys does not use privileged input interception.
 
-Until those behaviors are demonstrated on the target compositor, hold-mode global activation is considered **unverified**. The backend does not silently change modes or use privileged input interception.
+For accurate cursor placement on KDE Plasma Wayland, enable the **Radial Keys Cursor Position** script in System Settings → Window Management → KWin Scripts after installing the package. The script forwards cursor coordinates only; shortcut handling remains in the backend/desktop portal.
+
+## Native packages
+
+Package definitions are provided for Debian/Ubuntu (`debian/`), Fedora/RPM (`packaging/rpm/`), and Arch (`packaging/arch/`). Packages include the backend, Qt renderer, and separate user units. Build instructions and packaging limitations are in [docs/development.md](docs/development.md).
+
+After installing a package, enable the backend and renderer at login:
+
+```sh
+systemctl --user enable --now io.github.radialkeys.Service.service io.github.radialkeys.Renderer.service
+```
 
 ## Project structure
 
-Keep implementation files grouped by area under `src/`: backend modules belong in `src/backend/` and frontend modules belong in `src/frontend/`. The current backend files have not yet been moved into that structure.
-
 ```text
-src/
-├── backend/
-│   ├── config.rs
-│   ├── dbus.rs
-│   ├── portal.rs
-│   └── shortcuts.rs
-├── frontend/
-└── main.rs
+backend/Cargo.toml Rust backend package
+backend/src/       Rust backend process and modules
+frontend/qt/       Qt 6/QML renderer and shortcut settings
+packaging/         RPM, Arch, and systemd definitions
+debian/            Debian package metadata
+docs/              architecture and API documentation
 ```
 
 ## License
 
-This project is currently marked MIT in `Cargo.toml`. A standalone license file will be added with the project’s packaging setup.
+MIT; see [LICENSE](LICENSE).
