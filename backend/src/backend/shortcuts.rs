@@ -232,7 +232,7 @@ impl fmt::Display for Shortcut {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // Input source integration is intentionally pending; the state machine is tested independently.
+#[allow(dead_code)] // Escape, dead-zone, and direct toggle events also support future input integrations.
 pub enum InputEvent {
     Activated,
     Deactivated,
