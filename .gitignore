@@ -8,3 +8,5 @@
 *.deb
 *.rpm
 *.pkg.tar.*
+__pycache__/
+*.py[cod]
