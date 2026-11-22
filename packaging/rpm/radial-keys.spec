@@ -1,5 +1,5 @@
 Name:           radial-keys
-Version:        1.0.0
+Version:        1.1.0
 Release:        1%{?dist}
 Summary:        Customizable radial action menu for Linux
 License:        MIT
@@ -43,6 +43,8 @@ install -Dpm0644 packaging/kwin/radialkeys-cursor/contents/code/main.js \
   %{buildroot}%{_datadir}/kwin/scripts/radialkeys-cursor/contents/code/main.js
 install -Dpm0644 packaging/udev/70-radial-keys-mouse.rules \
   %{buildroot}%{_prefix}/lib/udev/rules.d/70-radial-keys-mouse.rules
+install -Dpm0644 assets/radial-keys-logo.svg \
+  %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/io.github.radialkeys.RadialKeys.svg
 
 %files
 %license LICENSE
@@ -54,7 +56,8 @@ install -Dpm0644 packaging/udev/70-radial-keys-mouse.rules \
 %{_datadir}/kwin/scripts/radialkeys-cursor/metadata.json
 %{_datadir}/kwin/scripts/radialkeys-cursor/contents/code/main.js
 %{_prefix}/lib/udev/rules.d/70-radial-keys-mouse.rules
+%{_datadir}/icons/hicolor/scalable/apps/io.github.radialkeys.RadialKeys.svg
 
 %changelog
-* Sun Nov 22 2026 farukylmz0550 <219123924+farukylmz0550@users.noreply.github.com> - 1.0.0-1
-- First stable release
+* Sun Nov 22 2026 farukylmz0550 <219123924+farukylmz0550@users.noreply.github.com> - 1.1.0-1
+- Add GUI-managed built-in and Python macros, process controls, integrity checks, and application icon

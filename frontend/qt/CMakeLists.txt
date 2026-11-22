@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(radial-keys-frontend VERSION 1.0.0 LANGUAGES CXX)
+project(radial-keys-frontend VERSION 1.1.0 LANGUAGES CXX)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 DBus)
 
@@ -43,6 +43,12 @@ qt_add_resources(radial-keys-frontend radial_keys_icons
         ../../assets/icons/microphone-unmuted.svg
         ../../assets/icons/lock-screen.svg
         ../../assets/icons/show-desktop.svg
+)
+
+qt_add_resources(radial-keys-frontend radial_keys_branding
+    PREFIX "/branding"
+    BASE "${CMAKE_CURRENT_SOURCE_DIR}/../../assets"
+    FILES ../../assets/radial-keys-logo.svg
 )
 
 target_link_libraries(radial-keys-frontend PRIVATE

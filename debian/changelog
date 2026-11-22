@@ -1,3 +1,11 @@
+radial-keys (1.1.0-1) unstable; urgency=medium
+
+  * Add sixteen GUI-configurable built-in macros and an in-app Python editor.
+  * Add process management, script integrity checks, security documentation,
+    and the Radial Keys application icon.
+
+ -- farukylmz0550 <219123924+farukylmz0550@users.noreply.github.com>  Sun, 22 Nov 2026 21:10:00 +0300
+
 radial-keys (1.0.0-1) unstable; urgency=medium
 
   * First stable release with KDE desktop styling and mouse activation support.

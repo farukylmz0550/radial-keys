@@ -1,6 +1,7 @@
 #include "BackendClient.h"
 
 #include <QGuiApplication>
+#include <QIcon>
 #include <QDir>
 #include <QColor>
 #include <QQmlApplicationEngine>
@@ -45,6 +46,7 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("Radial Keys"));
     QGuiApplication::setOrganizationDomain(QStringLiteral("io.github.radialkeys"));
+    QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/branding/radial-keys-logo.svg")));
     QGuiApplication::setQuitOnLastWindowClosed(false);
 
     QQmlApplicationEngine engine;

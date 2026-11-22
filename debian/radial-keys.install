@@ -5,3 +5,4 @@ usr/lib/systemd/user/io.github.radialkeys.Renderer.service
 usr/share/kwin/scripts/radialkeys-cursor/metadata.json
 usr/share/kwin/scripts/radialkeys-cursor/contents/code/main.js
 usr/lib/udev/rules.d/70-radial-keys-mouse.rules
+usr/share/icons/hicolor/scalable/apps/io.github.radialkeys.RadialKeys.svg

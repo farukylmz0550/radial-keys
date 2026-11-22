@@ -19,3 +19,4 @@ override_dh_auto_install:
 	install -D -m 0644 packaging/kwin/radialkeys-cursor/metadata.json debian/tmp/usr/share/kwin/scripts/radialkeys-cursor/metadata.json
 	install -D -m 0644 packaging/kwin/radialkeys-cursor/contents/code/main.js debian/tmp/usr/share/kwin/scripts/radialkeys-cursor/contents/code/main.js
 	install -D -m 0644 packaging/udev/70-radial-keys-mouse.rules debian/tmp/usr/lib/udev/rules.d/70-radial-keys-mouse.rules
+	install -D -m 0644 assets/radial-keys-logo.svg debian/tmp/usr/share/icons/hicolor/scalable/apps/io.github.radialkeys.RadialKeys.svg

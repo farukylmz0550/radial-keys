@@ -14,7 +14,6 @@ Window {
         function onStateChanged() { canvas.requestPaint() }
     }
 
-    visible: menuVisible
     visibility: menuVisible ? Window.FullScreen : Window.Hidden
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint

@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/radial-keys-logo.svg" width="128" alt="Radial Keys logo">
+
 # radial-keys
 
 **A native, customizable radial action menu for Linux.**
