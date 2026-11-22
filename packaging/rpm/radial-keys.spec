@@ -2,7 +2,7 @@ Name:           radial-keys
 Version:        1.1.0
 Release:        1%{?dist}
 Summary:        Customizable radial action menu for Linux
-License:        MIT
+License:        GPL-3.0-only
 URL:            https://github.com/farukylmz0550/radial-keys
 Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  cargo

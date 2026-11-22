@@ -2,6 +2,7 @@ pub(super) mod config;
 pub(super) mod dbus;
 pub(super) mod input;
 pub(super) mod macros;
+pub(super) mod paths;
 pub(super) mod portal;
 pub(super) mod presets;
 pub(super) mod script_store;

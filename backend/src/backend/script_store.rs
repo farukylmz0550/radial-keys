@@ -25,10 +25,9 @@ pub struct MacroScriptStore {
 
 impl MacroScriptStore {
     pub fn default_path() -> Result<Self, ScriptStoreError> {
-        let directories = directories::ProjectDirs::from("org", "radial-keys", "radial-keys")
-            .ok_or(ScriptStoreError::ConfigDirectory)?;
+        let config_dir = super::paths::config_dir().ok_or(ScriptStoreError::ConfigDirectory)?;
         Ok(Self {
-            directory: directories.config_dir().join("macros"),
+            directory: config_dir.join("macros"),
         })
     }
 

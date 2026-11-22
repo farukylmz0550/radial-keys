@@ -5,7 +5,7 @@
         "Icon": "input-mouse",
         "Id": "radialkeys-cursor",
         "Version": "1.1.0",
-        "License": "MIT"
+        "License": "GPL-3.0-only"
     },
     "X-Plasma-API": "javascript",
     "X-Plasma-MainScript": "code/main.js",

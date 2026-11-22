@@ -251,9 +251,9 @@ impl ConfigStore {
     }
 
     pub fn default_path() -> anyhow::Result<Self> {
-        let dirs = directories::ProjectDirs::from("org", "radial-keys", "radial-keys")
+        let config_dir = super::paths::config_dir()
             .ok_or_else(|| anyhow::anyhow!("could not determine XDG config directory"))?;
-        Ok(Self::new(dirs.config_dir().join("config.toml")))
+        Ok(Self::new(config_dir.join("config.toml")))
     }
 
     pub fn load_or_default(&self) -> Result<RadialConfig, ConfigError> {

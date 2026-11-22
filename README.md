@@ -172,7 +172,8 @@ docs/              architecture and API documentation
 
 ## License
 
-MIT; see [LICENSE](LICENSE).
+GPL-3.0-only; see [LICENSE](LICENSE). Third-party dependencies and bundled
+components retain their respective licenses.
 
 ## Disclaimer
 
