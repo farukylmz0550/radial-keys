@@ -1,11 +1,14 @@
 #include "BackendClient.h"
 
 #include <QGuiApplication>
+#include <QDir>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QDebug>
+#include <QQuickStyle>
 #include <QUrl>
 #include <cstdio>
+#include <algorithm>
 
 int main(int argc, char *argv[])
 {
@@ -15,8 +18,22 @@ int main(int argc, char *argv[])
     QGuiApplication::setOrganizationDomain(QStringLiteral("io.github.radialkeys"));
     QGuiApplication::setQuitOnLastWindowClosed(false);
 
-    BackendClient backend;
     QQmlApplicationEngine engine;
+    const QString desktop = qEnvironmentVariable("XDG_CURRENT_DESKTOP");
+    const bool isKdeSession = desktop.contains(QStringLiteral("KDE"), Qt::CaseInsensitive)
+        || !qEnvironmentVariableIsEmpty("KDE_FULL_SESSION");
+    const bool hasExplicitStyle = !qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE");
+    const QStringList importPaths = engine.importPathList();
+    const bool hasKdeStyle = std::any_of(
+        importPaths.cbegin(), importPaths.cend(), [](const QString &path) {
+            return QDir(path + QStringLiteral("/org/kde/desktop")).exists();
+        });
+    if (isKdeSession && !hasExplicitStyle && hasKdeStyle) {
+        QQuickStyle::setStyle(QStringLiteral("org.kde.desktop"));
+        qInfo() << "Using KDE desktop Qt Quick Controls style";
+    }
+
+    BackendClient backend;
     QObject::connect(&engine, &QQmlApplicationEngine::warnings, &engine,
                      [](const QList<QQmlError> &warnings) {
                          for (const auto &warning : warnings) {

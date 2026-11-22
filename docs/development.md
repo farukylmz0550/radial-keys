@@ -11,7 +11,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo build --release --locked
 ```
 
-The Qt 6/QML renderer lives in `frontend/qt/`. Build it with `cmake -S frontend/qt -B build/frontend -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr && cmake --build build/frontend --parallel`. This host does not have CMake or Qt 6 installed, so that build has not been verified here.
+The Qt 6/QML renderer lives in `frontend/qt/`. Build it with `cmake -S frontend/qt -B build/frontend -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr && cmake --build build/frontend --parallel`. On Plasma, the app uses KDE's `org.kde.desktop` Qt Quick Controls style when available, unless `QT_QUICK_CONTROLS_STYLE` is explicitly set. The settings window uses a dark palette with white text for active, inactive, and disabled controls; native KDE file dialogs retain the desktop's own theme.
 
 ## User service
 

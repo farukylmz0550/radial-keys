@@ -13,7 +13,39 @@ ApplicationWindow {
     minimumHeight: 620
     visible: true
     title: qsTr("Radial Keys")
-    color: palette.window
+    color: "#202124"
+    palette.window: "#202124"
+    palette.windowText: "#ffffff"
+    palette.base: "#25262b"
+    palette.alternateBase: "#2c2d33"
+    palette.text: "#ffffff"
+    palette.button: "#32343a"
+    palette.buttonText: "#ffffff"
+    palette.brightText: "#ffffff"
+    palette.highlight: "#005a9e"
+    palette.highlightedText: "#ffffff"
+    palette.placeholderText: "#ffffff"
+    palette.mid: "#ffffff"
+    palette.midlight: "#474950"
+    palette.dark: "#18191d"
+
+    palette.inactive.window: "#202124"
+    palette.inactive.base: "#25262b"
+    palette.inactive.button: "#32343a"
+    palette.inactive.text: "#ffffff"
+    palette.inactive.windowText: "#ffffff"
+    palette.inactive.buttonText: "#ffffff"
+    palette.inactive.placeholderText: "#ffffff"
+    palette.inactive.highlightedText: "#ffffff"
+
+    palette.disabled.window: "#202124"
+    palette.disabled.base: "#25262b"
+    palette.disabled.button: "#32343a"
+    palette.disabled.text: "#ffffff"
+    palette.disabled.windowText: "#ffffff"
+    palette.disabled.buttonText: "#ffffff"
+    palette.disabled.placeholderText: "#ffffff"
+    palette.disabled.highlightedText: "#ffffff"
 
     function directionName(id) {
         switch (id) {
@@ -46,7 +78,7 @@ ApplicationWindow {
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                color: palette.mid
+                color: "#ffffff"
                 text: qsTr("Open a radial menu and run your own Python macros.")
             }
         }
@@ -110,7 +142,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             visible: backend.activationType === "mouse"
                             wrapMode: Text.WordWrap
-                            color: palette.mid
+                            color: "#ffffff"
                             text: qsTr("When enabled, Radial Keys reserves this button on the first detected mouse. Other mouse movement, buttons, and scrolling continue to work.")
                         }
                         RowLayout {
@@ -120,7 +152,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
                                 text: backend.mouseHelperStatus
-                                color: backend.mouseHelperStatus.startsWith("Active:") ? palette.text : palette.mid
+                                color: "#ffffff"
                             }
                             Button {
                                 text: backend.activationEnabled ? qsTr("Disable") : qsTr("Enable mouse button")
@@ -132,7 +164,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             visible: backend.activationType === "mouse" && !backend.activationEnabled
                             wrapMode: Text.WordWrap
-                            color: palette.mid
+                            color: "#ffffff"
                             text: qsTr("The package grants session access to mouse devices and the virtual mouse relay. No keyboard input is read.")
                         }
                     }
@@ -140,7 +172,7 @@ ApplicationWindow {
                     Rectangle {
                         Layout.fillWidth: true
                         height: 1
-                        color: palette.mid
+                        color: "#474950"
                         opacity: 0.35
                     }
 
@@ -166,7 +198,7 @@ ApplicationWindow {
                                 text: backend.shortcutRegistered
                                       ? qsTr("Shortcut is enabled")
                                       : qsTr("Shortcut is disabled")
-                                color: backend.shortcutRegistered ? palette.text : palette.mid
+                                color: "#ffffff"
                             }
                             Button {
                                 text: backend.activationEnabled ? qsTr("Disable") : qsTr("Enable %1").arg(backend.shortcut)
@@ -178,7 +210,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             visible: !backend.activationEnabled
                             wrapMode: Text.WordWrap
-                            color: palette.mid
+                            color: "#ffffff"
                             text: qsTr("Enabling the shortcut asks your desktop to register it. You can disable it here at any time.")
                         }
                     }
@@ -186,7 +218,7 @@ ApplicationWindow {
                     Rectangle {
                         Layout.fillWidth: true
                         height: 1
-                        color: palette.mid
+                        color: "#474950"
                         opacity: 0.35
                     }
 
@@ -204,7 +236,7 @@ ApplicationWindow {
                             Label {
                                 Layout.fillWidth: true
                                 text: backend.menuOpen ? qsTr("Menu is open") : qsTr("Menu is closed")
-                                color: palette.mid
+                                color: "#ffffff"
                             }
                             Button {
                                 text: qsTr("Show menu")
@@ -217,7 +249,7 @@ ApplicationWindow {
                     Rectangle {
                         Layout.fillWidth: true
                         height: 1
-                        color: palette.mid
+                        color: "#474950"
                         opacity: 0.35
                     }
 
@@ -395,7 +427,7 @@ ApplicationWindow {
                                     Layout.topMargin: 12
                                     Layout.bottomMargin: 12
                                     height: 1
-                                    color: palette.mid
+                                    color: "#474950"
                                     opacity: 0.3
                                 }
                             }
