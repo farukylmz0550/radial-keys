@@ -168,3 +168,9 @@ docs/              architecture and API documentation
 ## License
 
 MIT; see [LICENSE](LICENSE).
+
+## Disclaimer
+
+Radial Keys is provided “as is,” without any express or implied warranty. The
+developers accept no liability for loss, damage, or other issues arising from
+the use of this software. See [LICENSE](LICENSE) for the full terms.
