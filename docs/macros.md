@@ -1,21 +1,70 @@
-# Python macros
+# Macro editing and execution
 
-Each of the eight radial slots can have a label, icon, and Python script. Open the Radial Keys settings window, choose a `.py` file with **Browse…**, optionally choose a PNG, JPEG, or SVG icon, enter the label shown on the wheel, and press **Save**.
+Radial Keys provides 16 built-in actions and an in-app Python editor for custom
+macros. Open **Actions**, choose a slot, and select either a built-in action or
+**Custom Python…**. Write or paste code in the editor and save it there. The
+backend stores the text in its private application data directory and records
+the SHA-256 hash; users do not need to create or manage script files. The
+optional **Import Python code** button copies an existing `.py` file into the
+editor. Built-in actions expose their parameters directly in the settings UI.
 
-When a populated segment is clicked—or is highlighted and the activation shortcut is pressed again—the backend starts:
+The available built-ins are: open a website, open an application, run an
+executable with arguments, open a folder, take a full or area screenshot,
+control media playback (play/pause, next, previous, stop), toggle or adjust
+volume, toggle microphone mute, lock the screen, and show/hide the desktop.
+The microphone icon changes between the muted and unmuted white SVG assets when
+PipeWire reports the current source state.
 
-```text
-python3 /absolute/path/to/your_macro.py
-```
+## Python permissions and execution
 
-For example, a macro that opens Konsole can contain:
+Python macros deliberately run with the logged-in user's permissions and the
+user's Python environment. Radial Keys does not sandbox Python, restrict its
+modules, or claim to detect malware. Only save code you trust. The backend uses
+`tokio::process::Command` to execute `python3` with a script path; it does not
+invoke a shell. Environment variables are inherited to preserve virtualenv and
+user environment compatibility, including `PYTHONPATH` and `PYTHONHOME`.
 
-```python
-import subprocess
+Scripts authored in the GUI are written atomically with private file
+permissions under the application data directory. A configured path must be an
+absolute `.py` path to a regular file. Symlinks are resolved to their canonical
+target before execution and hashing. A file could still be replaced between
+validation and interpreter open; this is a filesystem race, not a security
+boundary.
 
-subprocess.Popen(["konsole"])
-```
+For a configured script, Radial Keys stores a SHA-256 baseline. If its content
+changes, execution is blocked until the user reviews the code and chooses
+**Accept current script**. Hash comparison only detects a byte change; it does
+not establish whether code is safe. No script is deleted, quarantined, or
+modified by the integrity check.
 
-The backend passes the selected script path as an argument and does not invoke a shell. A script runs as the logged-in user and has that user's permissions. Only assign scripts you trust. Python packages used by a macro must already be available to the `python3` interpreter.
+## Process management
 
-An empty macro path leaves the slot as a no-op. Its label can still be changed. Slot labels are limited to 32 characters.
+The settings UI can enforce one running instance per macro and configure an
+optional timeout. A timeout of **Disabled** means no time limit; Radial Keys
+does not impose an arbitrary duration. Running processes and their most recent
+results are visible in the settings UI, where a running macro can be stopped.
+Stopping or timing out a macro sends termination to its process group, waits,
+and escalates if needed; the backend reaps the direct child. Captured output is
+capped at 16 KiB per stream and recent results are capped at 20 entries.
+
+## Security and remaining limitations
+
+The backend's D-Bus service is on the per-user session bus. Methods are
+available to processes that can access that bus as the logged-in user; Unix UID
+checks cannot distinguish trusted apps from other processes owned by the same
+user. `ActivateSlot` additionally requires a recently active renderer and open
+menu to reduce accidental or unrelated invocation, but this is not a
+same-user authorization boundary. The session bus must not be treated as a
+security sandbox.
+
+Mouse activation uses the udev `uaccess` tag for mouse-classified event
+devices, which grants access to the active local session through ACLs rather
+than requiring the application to run as root. The helper grabs only a selected
+relative mouse while active and relays unrelated events through uinput. Device
+classification is heuristic and support depends on the installed udev rules,
+session ACLs, and available uinput permissions.
+
+Built-in macros also run as the user and depend on desktop utilities such as
+`playerctl`, `wpctl`, `spectacle`, `loginctl`, and KDE's `qdbus6` where
+applicable. Their absence is reported as an execution error. These actions use
+direct executable-and-argument invocation, not a shell.

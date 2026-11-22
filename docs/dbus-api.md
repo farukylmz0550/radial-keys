@@ -12,6 +12,14 @@ Radial Keys uses the session bus. The backend owns `io.github.radialkeys.Service
 | `SetCursorPosition` | `(i, i) -> ()` | Stores compositor-reported global pointer coordinates for renderer placement. |
 | `GetConfiguration` | `() -> s` | Returns TOML configuration. |
 | `GetSlots` | `() -> s` | Returns the eight slot labels, macro paths, and icon paths as JSON. |
+| `GetBuiltinMacros` | `() -> s` | Returns the built-in macro catalog, parameter definitions, and icons as JSON. |
+| `GetMacroStatus` | `() -> s` | Returns running macros, recent results, process settings, and microphone state as JSON. |
+| `SetMacroOptions` | `(b, x) -> ()` | Sets single-instance mode and timeout seconds; `-1` disables timeout. |
+| `TerminateMacro` | `(s) -> ()` | Stops a running macro by process ID. |
+| `TerminateSlotMacros` | `(u) -> u` | Stops running macros for one slot and returns the number signalled. |
+| `AcceptScriptUpdate` | `(u) -> ()` | Stores the current script SHA-256 as the explicitly accepted baseline. |
+| `SetSlotPreset` | `(u, s, s, s, s) -> ()` | Saves a built-in macro ID, JSON parameters, label, and icon path for a slot. |
+| `SetSlotPython` | `(u, s, s, s) -> ()` | Saves Python source authored or imported in the GUI to private backend-managed storage. |
 | `SetSlot` | `(u, s, s) -> ()` | Validates and atomically saves a slot label and an absolute `.py` macro path (empty path clears the macro); preserves the slot icon. |
 | `SetSlotDetails` | `(u, s, s, s) -> ()` | Atomically saves a slot label, macro path, and absolute PNG/JPEG/SVG icon path; empty paths clear those assignments. |
 | `GetActivationShortcut` | `() -> s` | Returns canonical keyboard shortcut text. |
@@ -23,10 +31,12 @@ Radial Keys uses the session bus. The backend owns `io.github.radialkeys.Service
 | `HideMenu` | `() -> ()` | Closes backend menu state. |
 | `CancelMenu` | `() -> ()` | Cancels menu state; the renderer also calls this on Escape. |
 | `SelectSlot` | `(u) -> s` | Returns the selected action string; it does not execute it. |
-| `ActivateSlot` | `(u) -> s` | Runs the configured Python macro for that slot with `python3`, then closes the menu. |
+| `ActivateSlot` | `(u) -> s` | Runs the configured built-in or Python macro, then closes the menu. |
 
 Errors are returned as standard D-Bus method errors with a human-readable message. Invalid configuration is rejected before it replaces active state. A failed shortcut update leaves the old value and state intact.
 
 The interface is versioned by its name. Compatible additions may stay on `Service1`; incompatible semantics require `Service2` or a new object path.
+
+The session bus is not a per-application trust boundary: other processes running as the same user can call these methods. `ActivateSlot` additionally requires a recently active renderer and open menu to reduce accidental or unrelated invocation, but this does not isolate same-user callers.
 
 Frontend status signals are not implemented yet.

@@ -11,6 +11,20 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo build --release --locked
 ```
 
+The Python verification suite includes SVG unit checks plus backend/D-Bus/Qt
+smoke and macro round-trip E2E checks. Build the backend and Qt renderer first,
+then run it in an isolated session bus:
+
+```sh
+cargo build
+cmake -S frontend/qt -B build/frontend -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/frontend --parallel
+dbus-run-session -- python3 -m unittest discover -s tests -v
+```
+
+The E2E check launches the renderer with Qt's offscreen platform plugin, so it
+does not need to interact with the desktop currently in use.
+
 The Qt 6/QML renderer lives in `frontend/qt/`. Build it with `cmake -S frontend/qt -B build/frontend -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr && cmake --build build/frontend --parallel`. On Plasma, the app uses KDE's `org.kde.desktop` Qt Quick Controls style when available, unless `QT_QUICK_CONTROLS_STYLE` is explicitly set. The settings window uses a dark palette with white text for active, inactive, and disabled controls; native KDE file dialogs retain the desktop's own theme.
 
 ## User service
