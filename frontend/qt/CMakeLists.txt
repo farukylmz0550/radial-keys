@@ -22,6 +22,29 @@ qt_add_qml_module(radial-keys-frontend
         qml/menu/RadialMenu.qml
 )
 
+qt_add_resources(radial-keys-frontend radial_keys_icons
+    PREFIX "/icons"
+    BASE "${CMAKE_CURRENT_SOURCE_DIR}/../../assets/icons"
+    FILES
+        ../../assets/icons/open-website.svg
+        ../../assets/icons/launch-application.svg
+        ../../assets/icons/run-command.svg
+        ../../assets/icons/open-folder.svg
+        ../../assets/icons/screenshot-full.svg
+        ../../assets/icons/screenshot-region.svg
+        ../../assets/icons/media-play-pause.svg
+        ../../assets/icons/media-next.svg
+        ../../assets/icons/media-previous.svg
+        ../../assets/icons/media-stop.svg
+        ../../assets/icons/volume-toggle.svg
+        ../../assets/icons/volume-up.svg
+        ../../assets/icons/volume-down.svg
+        ../../assets/icons/microphone-muted.svg
+        ../../assets/icons/microphone-unmuted.svg
+        ../../assets/icons/lock-screen.svg
+        ../../assets/icons/show-desktop.svg
+)
+
 target_link_libraries(radial-keys-frontend PRIVATE
     Qt6::Core
     Qt6::Gui

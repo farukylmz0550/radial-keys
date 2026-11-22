@@ -14,9 +14,12 @@ Radial Keys uses an independent Rust session backend and a replaceable Qt 6/QML 
 
 ## Current features
 
-- Eight configurable slots with stable IDs, labels, and action strings
-- GUI editor for all eight slot labels, Python macro files, and PNG/JPEG/SVG icons
-- Direct `python3 /absolute/path/to/macro.py` execution when a populated wheel segment is selected (no shell)
+- Eight configurable slots with 16 built-in actions or custom Python macros
+- In-app Python editor; source is stored by the backend, so users do not need to manage script files
+- Direct `python3 /absolute/path/to/macro.py` execution without a shell, with managed lifecycle, optional timeout, and single-instance mode
+- Per-script SHA-256 change detection with explicit user acceptance
+- GUI controls for macro status, errors, and stopping running scripts
+- Original white SVG icons on transparent backgrounds for every built-in action, including separate muted/unmuted microphone states
 - `Ctrl+Shift+Y` as the default keyboard activation shortcut, stored in editable TOML configuration
 - GUI configuration for keyboard or mouse activation input and a selectable mouse button; the evdev/uinput helper reserves only the configured button on the first detected mouse and relays the remaining events
 - KDE Plasma Wayland cursor coordinates forwarded by a small KWin script so the menu can open at the pointer
@@ -27,7 +30,7 @@ Radial Keys uses an independent Rust session backend and a replaceable Qt 6/QML 
 - Eight-segment Qt Quick overlay with directional highlighting and Escape cancellation
 - Native package definitions for DEB, RPM, and Arch Linux
 
-See [Python macros](docs/macros.md) for assigning and writing slot scripts.
+See [Macros](docs/macros.md) for the built-in actions, in-app Python editor, process controls, and security model.
 
 Mouse activation is opt-in. The backend opens the first detected relative mouse, suppresses the configured activation button, and relays its other events through a virtual mouse. Packages install a udev rule granting the active desktop user access only to mouse-classified input devices. A running mouse may need to be reconnected after installing the package. The renderer runs separately and reports its heartbeat to the backend.
 

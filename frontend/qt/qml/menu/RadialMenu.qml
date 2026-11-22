@@ -87,7 +87,10 @@ Window {
             height: 28
             x: overlay.centerX + Math.cos(-Math.PI / 2 + index * Math.PI / 4) * 48 - width / 2
             y: overlay.centerY + Math.sin(-Math.PI / 2 + index * Math.PI / 4) * 48 - height / 2
-            source: modelData.icon && modelData.icon.length > 0 ? backend.fileUrl(modelData.icon) : ""
+            source: modelData.preset && modelData.preset.id === "microphone_toggle"
+                ? backend.fileUrl(backend.microphoneStateKnown && backend.microphoneMuted
+                    ? "qrc:/icons/microphone-muted.svg" : "qrc:/icons/microphone-unmuted.svg")
+                : (modelData.icon && modelData.icon.length > 0 ? backend.fileUrl(modelData.icon) : "")
             sourceSize.width: 56
             sourceSize.height: 56
             fillMode: Image.PreserveAspectFit

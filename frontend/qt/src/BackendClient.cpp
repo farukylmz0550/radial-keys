@@ -10,6 +10,7 @@
 #include <QGuiApplication>
 #include <QCursor>
 #include <QUrl>
+#include <QFile>
 
 namespace {
 const QString serviceName = QStringLiteral("io.github.radialkeys.Service");
@@ -20,15 +21,21 @@ const QString interfaceName = QStringLiteral("io.github.radialkeys.Service1");
 BackendClient::BackendClient(QObject *parent)
     : QObject(parent)
 {
-    m_statusTimer.setInterval(40);
+    m_statusTimer.setInterval(100);
     connect(&m_statusTimer, &QTimer::timeout, this, &BackendClient::pollStatus);
     m_statusTimer.start();
+
+    m_macroStatusTimer.setInterval(1000);
+    connect(&m_macroStatusTimer, &QTimer::timeout, this, &BackendClient::pollMacroStatus);
+    m_macroStatusTimer.start();
 
     m_heartbeatTimer.setInterval(1000);
     connect(&m_heartbeatTimer, &QTimer::timeout, this, &BackendClient::sendRendererHeartbeat);
     m_heartbeatTimer.start();
     sendRendererHeartbeat();
     refreshSlots();
+    refreshBuiltinMacros();
+    pollMacroStatus();
 }
 
 BackendClient::~BackendClient()
@@ -102,6 +109,58 @@ void BackendClient::refreshSlots()
                             if (value.isObject())
                                 m_slots.append(value.toObject().toVariantMap());
                         }
+                        emit stateChanged();
+                    }
+                }
+                watcher->deleteLater();
+            });
+}
+
+void BackendClient::refreshBuiltinMacros()
+{
+    auto message = QDBusMessage::createMethodCall(
+        serviceName, objectPath, interfaceName, QStringLiteral("GetBuiltinMacros"));
+    auto *watcher = new QDBusPendingCallWatcher(
+        QDBusConnection::sessionBus().asyncCall(message, 5000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, watcher]() {
+                QDBusPendingReply<QString> reply = *watcher;
+                if (!reply.isError()) {
+                    const auto document = QJsonDocument::fromJson(reply.value().toUtf8());
+                    if (document.isArray()) {
+                        m_builtinMacros.clear();
+                        for (const auto &value : document.array()) {
+                            if (value.isObject())
+                                m_builtinMacros.append(value.toObject().toVariantMap());
+                        }
+                        emit stateChanged();
+                    }
+                }
+                watcher->deleteLater();
+            });
+}
+
+void BackendClient::pollMacroStatus()
+{
+    auto message = QDBusMessage::createMethodCall(
+        serviceName, objectPath, interfaceName, QStringLiteral("GetMacroStatus"));
+    auto *watcher = new QDBusPendingCallWatcher(
+        QDBusConnection::sessionBus().asyncCall(message, 5000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, watcher]() {
+                QDBusPendingReply<QString> reply = *watcher;
+                if (!reply.isError()) {
+                    const auto document = QJsonDocument::fromJson(reply.value().toUtf8());
+                    if (document.isObject()) {
+                        const auto status = document.object();
+                        m_runningMacros = status.value(QStringLiteral("running")).toArray().toVariantList();
+                        m_macroResults = status.value(QStringLiteral("recent")).toArray().toVariantList();
+                        m_macroSingleInstance = status.value(QStringLiteral("single_instance")).toBool(true);
+                        const auto timeout = status.value(QStringLiteral("timeout_seconds"));
+                        m_macroTimeoutSeconds = timeout.isNull() ? -1 : timeout.toInt(-1);
+                        const auto microphone = status.value(QStringLiteral("microphone_muted"));
+                        m_microphoneStateKnown = !microphone.isNull();
+                        m_microphoneMuted = microphone.toBool();
                         emit stateChanged();
                     }
                 }
@@ -210,6 +269,72 @@ void BackendClient::setSlot(int index, const QString &label, const QString &scri
             });
 }
 
+void BackendClient::setSlotPreset(int index, const QString &label, const QString &presetId,
+                                  const QVariantList &parameters, const QString &icon)
+{
+    if (index < 0 || index >= 8) {
+        m_errorMessage = tr("Slot index is out of range.");
+        emit stateChanged();
+        return;
+    }
+    QJsonArray array;
+    for (const auto &parameter : parameters)
+        array.append(parameter.toString());
+    const QString encoded = QString::fromUtf8(QJsonDocument(array).toJson(QJsonDocument::Compact));
+    auto message = QDBusMessage::createMethodCall(
+        serviceName, objectPath, interfaceName, QStringLiteral("SetSlotPreset"));
+    message.setArguments({QVariant::fromValue(static_cast<uint>(index)), label, presetId, encoded, icon});
+    auto *watcher = new QDBusPendingCallWatcher(
+        QDBusConnection::sessionBus().asyncCall(message, 10000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, watcher]() {
+                QDBusPendingReply<> reply = *watcher;
+                if (reply.isError()) {
+                    m_errorMessage = reply.error().message();
+                    emit stateChanged();
+                } else {
+                    m_errorMessage.clear();
+                    refreshSlots();
+                }
+                watcher->deleteLater();
+            });
+}
+
+void BackendClient::setSlotPython(int index, const QString &label, const QString &source,
+                                  const QString &icon)
+{
+    if (index < 0 || index >= 8)
+        return;
+    auto message = QDBusMessage::createMethodCall(
+        serviceName, objectPath, interfaceName, QStringLiteral("SetSlotPython"));
+    message.setArguments({QVariant::fromValue(static_cast<uint>(index)), label, source, icon});
+    auto *watcher = new QDBusPendingCallWatcher(
+        QDBusConnection::sessionBus().asyncCall(message, 15000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, watcher]() {
+                QDBusPendingReply<> reply = *watcher;
+                if (reply.isError()) {
+                    m_errorMessage = reply.error().message();
+                    emit stateChanged();
+                } else {
+                    m_errorMessage.clear();
+                    refreshSlots();
+                }
+                watcher->deleteLater();
+            });
+}
+
+int BackendClient::presetIndex(const QString &presetId) const
+{
+    if (presetId.isEmpty())
+        return -1;
+    for (qsizetype index = 0; index < m_builtinMacros.size(); ++index) {
+        if (m_builtinMacros.at(index).toMap().value(QStringLiteral("id")).toString() == presetId)
+            return static_cast<int>(index);
+    }
+    return -1;
+}
+
 QString BackendClient::localPath(const QString &url) const
 {
     const QUrl parsed(url);
@@ -218,7 +343,45 @@ QString BackendClient::localPath(const QString &url) const
 
 QString BackendClient::fileUrl(const QString &path) const
 {
-    return path.isEmpty() ? QString() : QUrl::fromLocalFile(path).toString();
+    if (path.isEmpty())
+        return {};
+    const QUrl url(path);
+    return url.isValid() && url.scheme() == QStringLiteral("qrc")
+        ? path : QUrl::fromLocalFile(path).toString();
+}
+
+QString BackendClient::readPythonSource(const QString &path) const
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return {};
+    return QString::fromUtf8(file.readAll());
+}
+
+void BackendClient::acceptScriptUpdate(int index)
+{
+    if (index >= 0 && index < 8)
+        callMethod(QStringLiteral("AcceptScriptUpdate"), {QVariant::fromValue(static_cast<uint>(index))});
+    refreshSlots();
+}
+
+void BackendClient::setMacroOptions(bool singleInstance, int timeoutSeconds)
+{
+    callMethod(QStringLiteral("SetMacroOptions"), {singleInstance, timeoutSeconds});
+    pollMacroStatus();
+}
+
+void BackendClient::terminateMacro(const QString &id)
+{
+    callMethod(QStringLiteral("TerminateMacro"), {id});
+    pollMacroStatus();
+}
+
+void BackendClient::terminateSlotMacros(int index)
+{
+    if (index >= 0 && index < 8)
+        callMethod(QStringLiteral("TerminateSlotMacros"), {QVariant::fromValue(static_cast<uint>(index))});
+    pollMacroStatus();
 }
 
 void BackendClient::setActivationDevice(const QString &device, const QString &button)

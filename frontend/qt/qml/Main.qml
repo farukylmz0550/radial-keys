@@ -301,7 +301,35 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
                     color: palette.mid
-                    text: qsTr("Choose a label and Python file for each direction. Select a segment to run its macro. Scripts run as your user account.")
+                    text: qsTr("Choose a built-in macro or edit a custom Python macro here. Macros run with your user permissions.")
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    CheckBox {
+                        id: singleInstanceCheck
+                        text: qsTr("Allow only one running copy of each macro")
+                        checked: backend.macroSingleInstance
+                        onToggled: backend.setMacroOptions(checked, timeoutCheck.checked ? timeoutSpin.value : -1)
+                    }
+                    Item { Layout.fillWidth: true }
+                    CheckBox {
+                        id: timeoutCheck
+                        text: qsTr("Execution timeout")
+                        checked: backend.macroTimeoutSeconds > 0
+                        onToggled: backend.setMacroOptions(singleInstanceCheck.checked, checked ? timeoutSpin.value : -1)
+                    }
+                    SpinBox {
+                        id: timeoutSpin
+                        from: 1
+                        to: 86400
+                        editable: true
+                        value: backend.macroTimeoutSeconds > 0 ? backend.macroTimeoutSeconds : 300
+                        enabled: timeoutCheck.checked
+                        Accessible.name: qsTr("Macro timeout in seconds")
+                        onValueModified: backend.setMacroOptions(singleInstanceCheck.checked, value)
+                    }
+                    Label { text: qsTr("seconds") }
                 }
 
                 ScrollView {
@@ -326,8 +354,39 @@ ApplicationWindow {
                                 property string labelText: modelData.label
                                 property string scriptText: modelData.action
                                 property string iconText: modelData.icon || ""
+                                property string presetId: modelData.preset ? modelData.preset.id : ""
+                                property var parameterValues: modelData.preset ? modelData.preset.parameters : []
                                 Layout.fillWidth: true
                                 spacing: 8
+
+                                function currentPreset() {
+                                    const presetIndex = backend.presetIndex(presetId)
+                                    return presetIndex >= 0 ? backend.builtinMacros[presetIndex] : null
+                                }
+
+                                function saveAction() {
+                                    if (presetId.length > 0)
+                                        backend.setSlotPreset(index, labelText, presetId, parameterValues, iconText)
+                                    else
+                                        backend.setSlot(index, labelText, scriptText, iconText)
+                                }
+
+                                function runningForSlot() {
+                                    for (let i = 0; i < backend.runningMacros.length; ++i) {
+                                        if (backend.runningMacros[i].slot === index)
+                                            return backend.runningMacros[i]
+                                    }
+                                    return null
+                                }
+
+                                function latestFailure() {
+                                    for (let i = 0; i < backend.macroResults.length; ++i) {
+                                        const result = backend.macroResults[i]
+                                        if (result.slot === index)
+                                            return result.outcome === "completed" ? null : result
+                                    }
+                                    return null
+                                }
 
                                 RowLayout {
                                     Layout.fillWidth: true
@@ -339,7 +398,10 @@ ApplicationWindow {
                                     Image {
                                         Layout.preferredWidth: 24
                                         Layout.preferredHeight: 24
-                                        source: actionRow.iconText.length > 0 ? backend.fileUrl(actionRow.iconText) : ""
+                                        source: actionRow.presetId === "microphone_toggle"
+                                            ? backend.fileUrl(backend.microphoneStateKnown && backend.microphoneMuted
+                                                ? "qrc:/icons/microphone-muted.svg" : "qrc:/icons/microphone-unmuted.svg")
+                                            : (actionRow.iconText.length > 0 ? backend.fileUrl(actionRow.iconText) : "")
                                         sourceSize.width: 48
                                         sourceSize.height: 48
                                         fillMode: Image.PreserveAspectFit
@@ -360,24 +422,38 @@ ApplicationWindow {
                                     Button {
                                         text: qsTr("Save")
                                         enabled: backend.serviceAvailable && actionRow.labelText.trim().length > 0
-                                        onClicked: backend.setSlot(actionRow.index, actionRow.labelText, actionRow.scriptText, actionRow.iconText)
+                                        onClicked: actionRow.saveAction()
                                     }
                                 }
 
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    TextField {
-                                        id: macroPath
+                                    ComboBox {
                                         Layout.fillWidth: true
-                                        text: actionRow.scriptText
-                                        placeholderText: qsTr("Python file (.py)")
-                                        color: settings.palette.text
-                                        placeholderTextColor: settings.palette.placeholderText
-                                        Accessible.name: qsTr("Python macro file for slot %1").arg(actionRow.index + 1)
-                                        onTextEdited: actionRow.scriptText = text
+                                        model: backend.builtinMacros
+                                        textRole: "label"
+                                        currentIndex: backend.presetIndex(actionRow.presetId)
+                                        Accessible.name: qsTr("Built-in macro for slot %1").arg(actionRow.index + 1)
+                                        onActivated: function(selectedIndex) {
+                                            const selected = backend.builtinMacros[selectedIndex]
+                                            actionRow.presetId = selected.id
+                                            actionRow.parameterValues = selected.defaults.slice(0)
+                                            actionRow.scriptText = ""
+                                            actionRow.iconText = "qrc:/icons/" + selected.icon
+                                            actionRow.labelText = selected.label
+                                        }
                                     }
                                     Button {
-                                        text: qsTr("Browse…")
+                                        text: actionRow.scriptText.length > 0 ? qsTr("Edit Python…") : qsTr("Custom Python…")
+                                        onClicked: {
+                                            pythonDialog.targetRow = actionRow
+                                            pythonEditor.text = actionRow.scriptText.length > 0
+                                                ? backend.readPythonSource(actionRow.scriptText) : ""
+                                            pythonDialog.open()
+                                        }
+                                    }
+                                    Button {
+                                        text: qsTr("Import .py…")
                                         onClicked: {
                                             macroPicker.targetRow = actionRow
                                             macroPicker.open()
@@ -385,12 +461,90 @@ ApplicationWindow {
                                     }
                                     ToolButton {
                                         text: qsTr("Clear")
-                                        enabled: actionRow.scriptText.length > 0
+                                        enabled: actionRow.scriptText.length > 0 || actionRow.presetId.length > 0
                                         onClicked: {
                                             actionRow.scriptText = ""
-                                            backend.setSlot(actionRow.index, actionRow.labelText, "", actionRow.iconText)
+                                            actionRow.presetId = ""
+                                            actionRow.parameterValues = []
+                                            actionRow.iconText = ""
+                                            backend.setSlot(actionRow.index, actionRow.labelText, "", "")
                                         }
                                     }
+                                }
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    visible: actionRow.currentPreset() !== null
+                                    wrapMode: Text.WordWrap
+                                    color: settings.palette.mid
+                                    text: actionRow.currentPreset() ? actionRow.currentPreset().description : ""
+                                }
+
+                                Repeater {
+                                    model: actionRow.currentPreset() ? actionRow.currentPreset().parameter_labels.length : 0
+                                    delegate: TextField {
+                                        required property int index
+                                        Layout.fillWidth: true
+                                        text: actionRow.parameterValues.length > index ? actionRow.parameterValues[index] : ""
+                                        placeholderText: actionRow.currentPreset().parameter_labels[index]
+                                        color: settings.palette.text
+                                        placeholderTextColor: settings.palette.placeholderText
+                                        Accessible.name: placeholderText
+                                        onTextEdited: {
+                                            const updated = actionRow.parameterValues.slice(0)
+                                            updated[index] = text
+                                            actionRow.parameterValues = updated
+                                        }
+                                    }
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    visible: actionRow.scriptText.length > 0
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: {
+                                            const state = actionRow.modelData.script_integrity || "untracked"
+                                            if (state === "changed") return qsTr("Python script changed since it was accepted.")
+                                            if (state === "missing") return qsTr("Python script file is missing.")
+                                            if (state === "untracked") return qsTr("Python script has no integrity baseline yet.")
+                                            return qsTr("Python script integrity verified.")
+                                        }
+                                        color: actionRow.modelData.script_integrity === "changed" || actionRow.modelData.script_integrity === "missing"
+                                            ? "#ffb4ab" : settings.palette.mid
+                                        wrapMode: Text.WordWrap
+                                    }
+                                    Button {
+                                        text: qsTr("Accept current script")
+                                        visible: actionRow.modelData.script_integrity === "changed" || actionRow.modelData.script_integrity === "untracked"
+                                        onClicked: backend.acceptScriptUpdate(actionRow.index)
+                                    }
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    visible: actionRow.runningForSlot() !== null
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: actionRow.runningForSlot()
+                                            ? qsTr("Running: %1").arg(actionRow.runningForSlot().label) : ""
+                                    }
+                                    Button {
+                                        text: qsTr("Stop")
+                                        onClicked: backend.terminateSlotMacros(actionRow.index)
+                                    }
+                                }
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    visible: actionRow.latestFailure() !== null
+                                    wrapMode: Text.WordWrap
+                                    color: "#ffb4ab"
+                                    text: actionRow.latestFailure()
+                                        ? qsTr("Last run: %1 (exit %2) %3")
+                                            .arg(actionRow.latestFailure().outcome)
+                                            .arg(actionRow.latestFailure().exit_code === null ? "—" : actionRow.latestFailure().exit_code)
+                                            .arg(actionRow.latestFailure().error_output) : ""
                                 }
 
                                 RowLayout {
@@ -417,7 +571,7 @@ ApplicationWindow {
                                         enabled: actionRow.iconText.length > 0
                                         onClicked: {
                                             actionRow.iconText = ""
-                                            backend.setSlot(actionRow.index, actionRow.labelText, actionRow.scriptText, "")
+                                            actionRow.saveAction()
                                         }
                                     }
                                 }
@@ -466,15 +620,65 @@ ApplicationWindow {
         }
     }
 
+    Dialog {
+        id: pythonDialog
+        property var targetRow
+        modal: true
+        palette: settings.palette
+        title: qsTr("Custom Python macro")
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        width: Math.min(settings.width - 48, 820)
+        height: Math.min(settings.height - 48, 620)
+        x: (settings.width - width) / 2
+        y: (settings.height - height) / 2
+        onAccepted: {
+            if (targetRow) {
+                targetRow.presetId = ""
+                targetRow.parameterValues = []
+                targetRow.scriptText = ""
+                backend.setSlotPython(targetRow.index, targetRow.labelText, pythonEditor.text, targetRow.iconText)
+            }
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 8
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                color: settings.palette.mid
+                text: qsTr("Python runs as your user account with access to your installed libraries and environment. Review code before saving it.")
+            }
+            TextArea {
+                id: pythonEditor
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                font.family: "monospace"
+                font.pixelSize: 13
+                wrapMode: TextEdit.NoWrap
+                selectByMouse: true
+                color: settings.palette.text
+                placeholderText: qsTr("Write Python code for this macro…")
+                background: Rectangle {
+                    color: settings.palette.base
+                    border.color: settings.palette.midlight
+                    radius: 6
+                }
+            }
+        }
+    }
+
     FileDialog {
         id: macroPicker
         property var targetRow
-        title: qsTr("Choose a Python macro")
+        title: qsTr("Import Python code")
         fileMode: FileDialog.OpenFile
         nameFilters: [qsTr("Python scripts (*.py)")]
         onAccepted: {
-            if (targetRow)
-                targetRow.scriptText = backend.localPath(selectedFile.toString())
+            if (targetRow) {
+                pythonDialog.targetRow = targetRow
+                pythonEditor.text = backend.readPythonSource(backend.localPath(selectedFile.toString()))
+                pythonDialog.open()
+            }
         }
     }
 
