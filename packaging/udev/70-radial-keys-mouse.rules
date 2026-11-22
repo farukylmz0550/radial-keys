@@ -1,6 +1,6 @@
 # Grant the active desktop user access only to udev-classified mouse devices.
 # The backend opens and grabs a single relative mouse and relays all but the
 # configured activation button through its uinput virtual mouse.
-SUBSYSTEM=="input", ENV{ID_INPUT_MOUSE}=="1", TAG+="uaccess"
+SUBSYSTEM=="input", KERNEL=="event[0-9]*", ENV{ID_INPUT_MOUSE}=="1", ENV{ID_INPUT_TOUCHPAD}!="1", ENV{ID_INPUT_POINTINGSTICK}!="1", TAG+="uaccess"
 # Allow the session user to create the virtual mouse used for event relay.
 KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess"

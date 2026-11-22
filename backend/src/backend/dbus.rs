@@ -1,11 +1,13 @@
 use super::{
     config::{ConfigError, ConfigStore, RadialConfig},
+    macros::{MacroProcessManager, sha256_file, validate_script_path},
     portal::{self, PortalSession},
+    presets::{self, BuiltinMacroConfig},
+    script_store::MacroScriptStore,
     shortcuts::{ActivationMode, ActivationState, InputEvent, Transition},
 };
 use serde::Serialize;
-use std::path::Path;
-use std::{sync::Arc, time::Instant};
+use std::{path::Path, sync::Arc, time::Instant};
 use tokio::{
     process::Command,
     sync::{Mutex, RwLock},
@@ -20,9 +22,20 @@ pub struct Backend {
     mouse_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
     mouse_status: Arc<RwLock<String>>,
     portal_operation: Mutex<()>,
+    config_operation: Mutex<()>,
     renderer_last_seen: Mutex<Option<Instant>>,
+    menu_open_observed_at: Mutex<Option<Instant>>,
     cursor_position: Mutex<Option<(i32, i32)>>,
+    macro_processes: MacroProcessManager,
+    script_store: MacroScriptStore,
+    microphone_state: Mutex<MicrophoneStateCache>,
     portal_report: String,
+}
+
+#[derive(Default)]
+struct MicrophoneStateCache {
+    checked_at: Option<Instant>,
+    muted: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -44,13 +57,17 @@ struct Status<'a> {
 }
 
 impl Backend {
+    pub fn macro_process_manager(&self) -> MacroProcessManager {
+        self.macro_processes.clone()
+    }
+
     pub fn new(
         config: Arc<RwLock<RadialConfig>>,
         store: ConfigStore,
         portal_report: String,
-    ) -> Self {
+    ) -> anyhow::Result<Self> {
         let mode = futures_free_mode(&config);
-        Self {
+        Ok(Self {
             config,
             store,
             activation: Arc::new(Mutex::new(ActivationState::new(mode))),
@@ -58,10 +75,15 @@ impl Backend {
             mouse_task: Mutex::new(None),
             mouse_status: Arc::new(RwLock::new("Disabled".into())),
             portal_operation: Mutex::new(()),
+            config_operation: Mutex::new(()),
             renderer_last_seen: Mutex::new(None),
+            menu_open_observed_at: Mutex::new(None),
             cursor_position: Mutex::new(None),
+            macro_processes: MacroProcessManager::default(),
+            script_store: MacroScriptStore::default_path()?,
+            microphone_state: Mutex::new(MicrophoneStateCache::default()),
             portal_report,
-        }
+        })
     }
 
     pub async fn start_configured_activation(&self) -> fdo::Result<()> {
@@ -73,6 +95,7 @@ impl Backend {
 
     async fn set_global_activation_enabled(&self, enabled: bool) -> fdo::Result<()> {
         let _operation = self.portal_operation.lock().await;
+        let _config_operation = self.config_operation.lock().await;
         let current = self.config.read().await.clone();
         if current.activation.input_type == super::config::ActivationType::Mouse {
             if enabled {
@@ -176,6 +199,7 @@ impl Backend {
     }
 
     async fn stop_mouse_helper(&self) {
+        self.activation.lock().await.handle(InputEvent::Escape, &[]);
         if let Some(task) = self.mouse_task.lock().await.take() {
             task.abort();
             let _ = task.await;
@@ -191,48 +215,47 @@ impl Backend {
     }
 
     async fn run_python_action(&self, index: usize) -> fdo::Result<String> {
-        let (label, script) = {
+        let (label, script, expected_hash, preset, single_instance, timeout_seconds) = {
             let config = self.config.read().await;
             let slot = config
                 .slots
                 .get(index)
                 .ok_or_else(|| to_dbus_error("slot index must be between 0 and 7"))?;
-            (slot.label.clone(), slot.action.clone())
+            (
+                slot.label.clone(),
+                slot.action.clone(),
+                slot.script_sha256.clone(),
+                slot.preset.clone(),
+                config.macro_settings.single_instance,
+                config.macro_settings.timeout_seconds,
+            )
         };
-        if script.is_empty() {
+        if script.is_empty() && preset.is_none() {
             return Ok(label);
         }
-        let path = Path::new(&script);
-        if !path.is_absolute() || path.extension().is_none_or(|extension| extension != "py") {
-            return Err(to_dbus_error(
-                "macro path must be an absolute .py file path",
-            ));
-        }
-        if !path.is_file() {
-            return Err(to_dbus_error(format!(
-                "Python macro does not exist: {script}"
-            )));
-        }
-
-        let mut child = Command::new("python3")
-            .arg(path)
-            .spawn()
-            .map_err(|error| to_dbus_error(format!("could not start Python macro: {error}")))?;
-        let script_for_log = script.clone();
-        tokio::spawn(async move {
-            match child.wait().await {
-                Ok(status) if status.success() => {
-                    tracing::info!(script = %script_for_log, "Python macro completed");
-                }
-                Ok(status) => {
-                    tracing::warn!(script = %script_for_log, %status, "Python macro exited with an error");
-                }
-                Err(error) => {
-                    tracing::warn!(script = %script_for_log, %error, "could not wait for Python macro");
-                }
-            }
-        });
-        tracing::info!(slot = index + 1, script, "started Python macro");
+        let result = if let Some(preset) = preset {
+            self.macro_processes
+                .start_preset(
+                    index,
+                    label.clone(),
+                    &preset,
+                    single_instance,
+                    timeout_seconds,
+                )
+                .await
+        } else {
+            self.macro_processes
+                .start_python(
+                    index,
+                    label.clone(),
+                    &script,
+                    expected_hash.as_deref(),
+                    single_instance,
+                    timeout_seconds,
+                )
+                .await
+        };
+        result.map_err(to_dbus_error)?;
         Ok(label)
     }
 
@@ -243,6 +266,7 @@ impl Backend {
         script: String,
         icon: Option<String>,
     ) -> fdo::Result<()> {
+        let _config_operation = self.config_operation.lock().await;
         let index = index as usize;
         if index >= 8 {
             return Err(to_dbus_error("slot index must be between 0 and 7"));
@@ -253,15 +277,14 @@ impl Backend {
         if script.len() > 4096 {
             return Err(to_dbus_error("Python macro path is too long"));
         }
-        if !script.is_empty() {
-            let path = Path::new(&script);
-            if !path.is_absolute() || path.extension().is_none_or(|extension| extension != "py") {
-                return Err(to_dbus_error("choose an absolute path to a .py file"));
-            }
-            if !path.is_file() {
-                return Err(to_dbus_error("selected Python macro file does not exist"));
-            }
-        }
+        let canonical_script = if script.is_empty() {
+            String::new()
+        } else {
+            validate_script_path(&script)
+                .map_err(to_dbus_error)?
+                .display()
+                .to_string()
+        };
         if let Some(icon_path) = icon.as_deref().filter(|path| !path.is_empty()) {
             let path = Path::new(icon_path);
             let extension = path
@@ -286,10 +309,135 @@ impl Backend {
             .get_mut(index)
             .ok_or_else(|| to_dbus_error("slot index must be between 0 and 7"))?;
         slot.label = label.trim().to_owned();
-        slot.action = script;
+        let previous_action = slot.action.clone();
+        let previous_hash = slot.script_sha256.clone();
+        slot.action = canonical_script.clone();
+        slot.script_sha256 = if canonical_script.is_empty() {
+            None
+        } else if canonical_script == previous_action {
+            previous_hash.or_else(|| sha256_file(Path::new(&canonical_script)).ok())
+        } else {
+            Some(sha256_file(Path::new(&canonical_script)).map_err(to_dbus_error)?)
+        };
+        slot.preset = None;
         if let Some(icon_path) = icon {
             slot.icon = icon_path;
         }
+        self.save_update(changed).await
+    }
+
+    async fn save_slot_preset(
+        &self,
+        index: u32,
+        label: String,
+        preset_id: String,
+        parameters_json: String,
+        icon: String,
+    ) -> fdo::Result<()> {
+        let _config_operation = self.config_operation.lock().await;
+        if index >= 8 {
+            return Err(to_dbus_error("slot index must be between 0 and 7"));
+        }
+        if label.trim().is_empty() || label.chars().count() > 32 {
+            return Err(to_dbus_error("slot label must contain 1 to 32 characters"));
+        }
+        let parameters: Vec<String> =
+            serde_json::from_str(&parameters_json).map_err(to_dbus_error)?;
+        let preset = BuiltinMacroConfig {
+            id: preset_id,
+            parameters,
+        };
+        presets::validate(&preset).map_err(to_dbus_error)?;
+        let definition =
+            presets::definition(&preset.id).expect("validated preset has a definition");
+        let mut changed = self.config.read().await.clone();
+        let slot = changed
+            .slots
+            .get_mut(index as usize)
+            .ok_or_else(|| to_dbus_error("slot index must be between 0 and 7"))?;
+        slot.label = label.trim().to_owned();
+        slot.action.clear();
+        slot.script_sha256 = None;
+        slot.icon = if icon.trim().is_empty() {
+            format!("qrc:/icons/{}", definition.icon)
+        } else if icon.starts_with("qrc:/icons/") {
+            icon
+        } else {
+            let path = Path::new(&icon);
+            if !path.is_absolute()
+                || !path.is_file()
+                || path
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    .is_none_or(|extension| {
+                        !matches!(
+                            extension.to_ascii_lowercase().as_str(),
+                            "png" | "jpg" | "jpeg" | "svg"
+                        )
+                    })
+            {
+                return Err(to_dbus_error(
+                    "choose an absolute PNG, JPEG, or SVG icon path",
+                ));
+            }
+            icon
+        };
+        slot.preset = Some(preset);
+        self.save_update(changed).await
+    }
+
+    async fn save_slot_python(
+        &self,
+        index: u32,
+        label: String,
+        source: String,
+        icon: String,
+    ) -> fdo::Result<()> {
+        let _config_operation = self.config_operation.lock().await;
+        if index >= 8 {
+            return Err(to_dbus_error("slot index must be between 0 and 7"));
+        }
+        if label.trim().is_empty() || label.chars().count() > 32 {
+            return Err(to_dbus_error("slot label must contain 1 to 32 characters"));
+        }
+        let mut changed = self.config.read().await.clone();
+        let slot = changed
+            .slots
+            .get_mut(index as usize)
+            .ok_or_else(|| to_dbus_error("slot index must be between 0 and 7"))?;
+        let (script_path, hash) = if source.is_empty() {
+            (String::new(), None)
+        } else {
+            let stored = self
+                .script_store
+                .store(index as usize, &source)
+                .map_err(to_dbus_error)?;
+            (stored.path, Some(stored.sha256))
+        };
+        if !icon.is_empty() && !icon.starts_with("qrc:/icons/") {
+            let path = Path::new(&icon);
+            if !path.is_absolute()
+                || !path.is_file()
+                || path
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    .is_none_or(|extension| {
+                        !matches!(
+                            extension.to_ascii_lowercase().as_str(),
+                            "png" | "jpg" | "jpeg" | "svg"
+                        )
+                    })
+            {
+                return Err(to_dbus_error(
+                    "choose an absolute PNG, JPEG, or SVG icon path",
+                ));
+            }
+        }
+        slot.label = label.trim().to_owned();
+        slot.action = script_path;
+        slot.script_sha256 = hash;
+        slot.preset = None;
+        slot.icon = icon;
         self.save_update(changed).await
     }
 }
@@ -323,6 +471,9 @@ impl Backend {
         let mouse_button = config.activation.mouse_button.clone();
         drop(config);
         let state = self.activation.lock().await;
+        if state.is_open() {
+            *self.menu_open_observed_at.lock().await = Some(Instant::now());
+        }
         let renderer_available = self
             .renderer_last_seen
             .lock()
@@ -387,7 +538,137 @@ impl Backend {
 
     #[zbus(name = "GetSlots")]
     async fn get_slots(&self) -> fdo::Result<String> {
-        serde_json::to_string(&self.config.read().await.slots).map_err(to_dbus_error)
+        let slots = self.config.read().await.slots.clone();
+        let mut views = Vec::with_capacity(slots.len());
+        for slot in slots {
+            let integrity = if slot.action.is_empty() {
+                "none"
+            } else if let Some(expected) = slot.script_sha256.as_deref() {
+                match validate_script_path(&slot.action)
+                    .ok()
+                    .and_then(|path| sha256_file(&path).ok())
+                {
+                    Some(actual) if actual == expected => "verified",
+                    Some(_) => "changed",
+                    None => "missing",
+                }
+            } else {
+                "untracked"
+            };
+            let mut view = serde_json::to_value(slot).map_err(to_dbus_error)?;
+            view["script_integrity"] = serde_json::Value::String(integrity.into());
+            views.push(view);
+        }
+        serde_json::to_string(&views).map_err(to_dbus_error)
+    }
+
+    #[zbus(name = "GetBuiltinMacros")]
+    async fn get_builtin_macros(&self) -> fdo::Result<String> {
+        serde_json::to_string(presets::catalog()).map_err(to_dbus_error)
+    }
+
+    #[zbus(name = "GetMacroStatus")]
+    async fn get_macro_status(&self) -> fdo::Result<String> {
+        let (running, results) = self.macro_processes.snapshot().await;
+        let config = self.config.read().await;
+        let uses_microphone = config.slots.iter().any(|slot| {
+            slot.preset
+                .as_ref()
+                .is_some_and(|preset| preset.id == "microphone_toggle")
+        });
+        let single_instance = config.macro_settings.single_instance;
+        let timeout_seconds = config.macro_settings.timeout_seconds;
+        drop(config);
+        let microphone_muted = if uses_microphone {
+            let mut cache = self.microphone_state.lock().await;
+            if cache
+                .checked_at
+                .is_some_and(|checked| checked.elapsed() < std::time::Duration::from_secs(1))
+            {
+                cache.muted
+            } else {
+                let output = tokio::time::timeout(
+                    std::time::Duration::from_millis(750),
+                    Command::new("wpctl")
+                        .args(["get-volume", "@DEFAULT_AUDIO_SOURCE@"])
+                        .output(),
+                )
+                .await;
+                cache.muted = match output {
+                    Ok(Ok(output)) if output.status.success() => {
+                        Some(String::from_utf8_lossy(&output.stdout).contains("[MUTED]"))
+                    }
+                    _ => None,
+                };
+                cache.checked_at = Some(Instant::now());
+                cache.muted
+            }
+        } else {
+            None
+        };
+        serde_json::to_string(&serde_json::json!({
+            "running": running,
+            "recent": results,
+            "microphone_muted": microphone_muted,
+            "single_instance": single_instance,
+            "timeout_seconds": timeout_seconds,
+        }))
+        .map_err(to_dbus_error)
+    }
+
+    #[zbus(name = "SetMacroOptions")]
+    async fn set_macro_options(
+        &self,
+        single_instance: bool,
+        timeout_seconds: i64,
+    ) -> fdo::Result<()> {
+        let _config_operation = self.config_operation.lock().await;
+        let mut changed = self.config.read().await.clone();
+        changed.macro_settings.single_instance = single_instance;
+        changed.macro_settings.timeout_seconds = if timeout_seconds < 0 {
+            None
+        } else if timeout_seconds == 0 {
+            return Err(to_dbus_error(
+                "timeout must be disabled with -1 or set to at least one second",
+            ));
+        } else {
+            Some(timeout_seconds as u64)
+        };
+        self.save_update(changed).await
+    }
+
+    #[zbus(name = "TerminateMacro")]
+    async fn terminate_macro(&self, id: String) -> fdo::Result<()> {
+        if self.macro_processes.terminate(&id).await {
+            Ok(())
+        } else {
+            Err(to_dbus_error("macro process is no longer running"))
+        }
+    }
+
+    #[zbus(name = "TerminateSlotMacros")]
+    async fn terminate_slot_macros(&self, index: u32) -> fdo::Result<u32> {
+        if index >= 8 {
+            return Err(to_dbus_error("slot index must be between 0 and 7"));
+        }
+        Ok(self.macro_processes.terminate_slot(index as usize).await as u32)
+    }
+
+    #[zbus(name = "AcceptScriptUpdate")]
+    async fn accept_script_update(&self, index: u32) -> fdo::Result<()> {
+        let _config_operation = self.config_operation.lock().await;
+        if index >= 8 {
+            return Err(to_dbus_error("slot index must be between 0 and 7"));
+        }
+        let mut changed = self.config.read().await.clone();
+        let slot = changed
+            .slots
+            .get_mut(index as usize)
+            .ok_or_else(|| to_dbus_error("slot index must be between 0 and 7"))?;
+        let path = validate_script_path(&slot.action).map_err(to_dbus_error)?;
+        slot.action = path.display().to_string();
+        slot.script_sha256 = Some(sha256_file(&path).map_err(to_dbus_error)?);
+        self.save_update(changed).await
     }
 
     #[zbus(name = "SetSlot")]
@@ -406,6 +687,30 @@ impl Backend {
         self.update_slot(index, label, script, Some(icon)).await
     }
 
+    #[zbus(name = "SetSlotPreset")]
+    async fn set_slot_preset(
+        &self,
+        index: u32,
+        label: String,
+        preset_id: String,
+        parameters_json: String,
+        icon: String,
+    ) -> fdo::Result<()> {
+        self.save_slot_preset(index, label, preset_id, parameters_json, icon)
+            .await
+    }
+
+    #[zbus(name = "SetSlotPython")]
+    async fn set_slot_python(
+        &self,
+        index: u32,
+        label: String,
+        source: String,
+        icon: String,
+    ) -> fdo::Result<()> {
+        self.save_slot_python(index, label, source, icon).await
+    }
+
     #[zbus(name = "GetActivationShortcut")]
     async fn get_activation_shortcut(&self) -> String {
         self.config.read().await.activation.shortcut()
@@ -414,6 +719,7 @@ impl Backend {
     #[zbus(name = "SetActivationShortcut")]
     async fn set_activation_shortcut(&self, shortcut: String) -> fdo::Result<()> {
         let _operation = self.portal_operation.lock().await;
+        let _config_operation = self.config_operation.lock().await;
         let mut changed = self.config.read().await.clone();
         let previous_input_type = changed.activation.input_type;
         changed
@@ -464,6 +770,7 @@ impl Backend {
             "toggle" => ActivationMode::Toggle,
             _ => return Err(to_dbus_error("mode must be 'hold' or 'toggle'")),
         };
+        let _config_operation = self.config_operation.lock().await;
         let mut changed = self.config.read().await.clone();
         changed.activation.mode = mode;
         self.save_update(changed).await?;
@@ -488,6 +795,7 @@ impl Backend {
         };
 
         let _operation = self.portal_operation.lock().await;
+        let _config_operation = self.config_operation.lock().await;
         let mut changed = self.config.read().await.clone();
         changed.activation.input_type = device;
         changed.activation.mouse_button = if device == super::config::ActivationType::Mouse {
@@ -543,6 +851,24 @@ impl Backend {
 
     #[zbus(name = "ActivateSlot")]
     async fn activate_slot(&self, index: u32) -> fdo::Result<String> {
+        if index >= 8 {
+            return Err(to_dbus_error("slot index must be between 0 and 7"));
+        }
+        let renderer_is_live = self
+            .renderer_last_seen
+            .lock()
+            .await
+            .is_some_and(|seen| seen.elapsed().as_secs() < 3);
+        let menu_was_recently_open = self
+            .menu_open_observed_at
+            .lock()
+            .await
+            .is_some_and(|opened| opened.elapsed() < std::time::Duration::from_secs(3));
+        if !renderer_is_live || !menu_was_recently_open {
+            return Err(to_dbus_error(
+                "macro execution requires a live renderer and a recently opened menu",
+            ));
+        }
         let label = self.run_python_action(index as usize).await?;
         let mut state = self.activation.lock().await;
         state.handle(InputEvent::Hide, &[]);

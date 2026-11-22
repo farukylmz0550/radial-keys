@@ -6,6 +6,7 @@ use std::{
 };
 use thiserror::Error;
 
+use super::presets::{self, BuiltinMacroConfig};
 use super::shortcuts::{ActivationMode, Shortcut};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -14,6 +15,24 @@ pub struct RadialConfig {
     pub version: u32,
     pub activation: ActivationConfig,
     pub slots: Vec<SlotConfig>,
+    #[serde(default)]
+    pub macro_settings: MacroSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct MacroSettings {
+    pub single_instance: bool,
+    pub timeout_seconds: Option<u64>,
+}
+
+impl Default for MacroSettings {
+    fn default() -> Self {
+        Self {
+            single_instance: true,
+            timeout_seconds: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -89,6 +108,10 @@ pub struct SlotConfig {
     pub action: String,
     #[serde(default)]
     pub icon: String,
+    #[serde(default)]
+    pub preset: Option<BuiltinMacroConfig>,
+    #[serde(default)]
+    pub script_sha256: Option<String>,
 }
 
 impl Default for RadialConfig {
@@ -113,8 +136,11 @@ impl Default for RadialConfig {
                 label: format!("Slot {}", index + 1),
                 action: String::new(),
                 icon: String::new(),
+                preset: None,
+                script_sha256: None,
             })
             .collect(),
+            macro_settings: MacroSettings::default(),
         }
     }
 }
@@ -156,6 +182,11 @@ impl RadialConfig {
                 "exactly eight slots are required".into(),
             ));
         }
+        if self.macro_settings.timeout_seconds == Some(0) {
+            return Err(ConfigError::Invalid(
+                "macro timeout must be greater than zero or disabled".into(),
+            ));
+        }
         let mut ids = std::collections::HashSet::new();
         for slot in &self.slots {
             if slot.id.trim().is_empty() || !ids.insert(slot.id.as_str()) {
@@ -165,6 +196,32 @@ impl RadialConfig {
             }
             if slot.label.trim().is_empty() {
                 return Err(ConfigError::Invalid("slot labels must not be empty".into()));
+            }
+            if slot.action.len() > 4096
+                || (!slot.action.is_empty()
+                    && (!Path::new(&slot.action).is_absolute()
+                        || Path::new(&slot.action)
+                            .extension()
+                            .is_none_or(|extension| extension != "py")))
+            {
+                return Err(ConfigError::Invalid(
+                    "Python macro path must be an absolute .py path under 4096 bytes".into(),
+                ));
+            }
+            if !slot.action.is_empty() && slot.preset.is_some() {
+                return Err(ConfigError::Invalid(
+                    "a slot cannot contain both a Python script and a built-in macro".into(),
+                ));
+            }
+            if let Some(preset) = &slot.preset {
+                presets::validate(preset).map_err(ConfigError::Invalid)?;
+            }
+            if slot.script_sha256.as_ref().is_some_and(|hash| {
+                hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+            }) {
+                return Err(ConfigError::Invalid(
+                    "script SHA-256 must be 64 hexadecimal characters".into(),
+                ));
             }
         }
         Ok(())
@@ -200,12 +257,45 @@ impl ConfigStore {
     }
 
     pub fn load_or_default(&self) -> Result<RadialConfig, ConfigError> {
-        if !self.path.exists() {
-            return Ok(RadialConfig::default());
+        match fs::symlink_metadata(&self.path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(RadialConfig::default());
+            }
+            Err(error) => return Err(error.into()),
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+                return Err(ConfigError::Invalid(
+                    "configuration path must be a regular file, not a symlink or special file"
+                        .into(),
+                ));
+            }
+            Ok(metadata) => {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    if metadata.permissions().mode() & 0o077 != 0 {
+                        fs::set_permissions(&self.path, fs::Permissions::from_mode(0o600))?;
+                    }
+                }
+            }
         }
         let text = fs::read_to_string(&self.path)?;
-        let config: RadialConfig = toml::from_str(&text)?;
+        let mut config: RadialConfig = toml::from_str(&text)?;
         config.validate()?;
+        let mut added_baselines = false;
+        for slot in &mut config.slots {
+            if !slot.action.is_empty()
+                && slot.script_sha256.is_none()
+                && let Ok(path) = super::macros::validate_script_path(&slot.action)
+                && let Ok(hash) = super::macros::sha256_file(&path)
+            {
+                slot.action = path.display().to_string();
+                slot.script_sha256 = Some(hash);
+                added_baselines = true;
+            }
+        }
+        if added_baselines {
+            self.save(&config)?;
+        }
         Ok(config)
     }
 
@@ -214,7 +304,27 @@ impl ConfigStore {
         let text = toml::to_string_pretty(config)?;
         let parent = self.path.parent().unwrap_or(Path::new("."));
         fs::create_dir_all(parent)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
+            if let Ok(metadata) = fs::symlink_metadata(&self.path)
+                && (metadata.file_type().is_symlink() || !metadata.is_file())
+            {
+                return Err(ConfigError::Invalid(
+                    "configuration path must be a regular file, not a symlink or special file"
+                        .into(),
+                ));
+            }
+        }
         let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            temporary
+                .as_file()
+                .set_permissions(fs::Permissions::from_mode(0o600))?;
+        }
         temporary.write_all(text.as_bytes())?;
         temporary.as_file().sync_all()?;
         temporary.persist(&self.path).map_err(|error| error.error)?;
@@ -254,6 +364,53 @@ mod tests {
         assert!(config.validate().is_err());
         config = RadialConfig::default();
         assert!(config.activation.set_shortcut("Ctrl+Escape").is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_timeout_and_conflicting_macro_sources() {
+        let mut config = RadialConfig::default();
+        config.macro_settings.timeout_seconds = Some(0);
+        assert!(config.validate().is_err());
+        config = RadialConfig::default();
+        config.slots[0].action = "/tmp/macro.py".into();
+        config.slots[0].preset = Some(BuiltinMacroConfig {
+            id: "media_next".into(),
+            parameters: vec![],
+        });
+        assert!(config.validate().is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlink_config_files_without_following_them() {
+        let directory = tempfile::tempdir().unwrap();
+        let actual = directory.path().join("actual.toml");
+        fs::write(&actual, "not a configuration").unwrap();
+        let link = directory.path().join("config.toml");
+        std::os::unix::fs::symlink(&actual, &link).unwrap();
+        assert!(
+            ConfigStore::new(link)
+                .load_or_default()
+                .unwrap_err()
+                .to_string()
+                .contains("regular file")
+        );
+        assert_eq!(fs::read_to_string(actual).unwrap(), "not a configuration");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restricts_existing_config_permissions_on_load() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(&path, toml::to_string(&RadialConfig::default()).unwrap()).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        ConfigStore::new(&path).load_or_default().unwrap();
+        assert_eq!(
+            fs::metadata(path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
     }
 
     #[test]

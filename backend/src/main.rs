@@ -14,10 +14,11 @@ async fn main() -> anyhow::Result<()> {
     let config = store.load_or_default()?;
     let shared = Arc::new(RwLock::new(config));
     let portal = backend::portal::probe().await;
-    let backend = Backend::new(shared.clone(), store, portal.clone());
+    let backend = Backend::new(shared.clone(), store, portal.clone())?;
     if let Err(error) = backend.start_configured_activation().await {
         tracing::warn!(%error, "could not restore configured global shortcut registration");
     }
+    let macro_processes = backend.macro_process_manager();
     let connection = zbus::connection::Builder::session()?
         .name("io.github.radialkeys.Service")?
         .serve_at("/io/github/radialkeys/Service", backend)?
@@ -32,5 +33,6 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(portal = %portal, unique_name, "Radial Keys backend ready");
 
     tokio::signal::ctrl_c().await?;
+    macro_processes.terminate_all().await;
     Ok(())
 }

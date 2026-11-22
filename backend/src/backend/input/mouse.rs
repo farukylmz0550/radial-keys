@@ -1,5 +1,5 @@
 use crate::backend::shortcuts::{ActivationState, InputEvent};
-use evdev::{Device, EventType, KeyCode, RelativeAxisCode};
+use evdev::{Device, EventType, KeyCode, PropType, RelativeAxisCode};
 use std::{fs, path::PathBuf, sync::Arc};
 use thiserror::Error;
 use tokio::sync::Mutex;
@@ -153,19 +153,27 @@ fn discover_mouse(trigger: KeyCode, button: &str) -> Result<PathBuf, MouseError>
         let Ok(device) = Device::open(&path) else {
             continue;
         };
-        let is_relative_mouse = device.supported_keys().is_some_and(|keys| {
-            [
-                KeyCode::BTN_LEFT,
-                KeyCode::BTN_RIGHT,
-                KeyCode::BTN_MIDDLE,
-                KeyCode::BTN_SIDE,
-                KeyCode::BTN_EXTRA,
-            ]
+        // Linux input properties: BUTTONPAD (0x02), SEMI_MT (0x03), and
+        // POINTING_STICK (0x05) identify devices that should not be grabbed as mice.
+        let properties = device.properties();
+        let is_touchpad_or_pointing_stick = [PropType(0x02), PropType(0x03), PropType(0x05)]
             .iter()
-            .any(|key| keys.contains(*key))
-        }) && device.supported_relative_axes().is_some_and(|axes| {
-            axes.contains(RelativeAxisCode::REL_X) && axes.contains(RelativeAxisCode::REL_Y)
-        });
+            .any(|property| properties.contains(*property));
+        let is_relative_mouse = !is_touchpad_or_pointing_stick
+            && device.supported_keys().is_some_and(|keys| {
+                [
+                    KeyCode::BTN_LEFT,
+                    KeyCode::BTN_RIGHT,
+                    KeyCode::BTN_MIDDLE,
+                    KeyCode::BTN_SIDE,
+                    KeyCode::BTN_EXTRA,
+                ]
+                .iter()
+                .any(|key| keys.contains(*key))
+            })
+            && device.supported_relative_axes().is_some_and(|axes| {
+                axes.contains(RelativeAxisCode::REL_X) && axes.contains(RelativeAxisCode::REL_Y)
+            });
         if !is_relative_mouse {
             continue;
         }
