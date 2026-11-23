@@ -44,6 +44,7 @@ struct Status<'a> {
     backend_available: bool,
     renderer_available: bool,
     menu_open: bool,
+    fullscreen_active: bool,
     shortcut: String,
     mode: ActivationMode,
     activation_type: super::config::ActivationType,
@@ -471,6 +472,7 @@ impl Backend {
         let mouse_button = config.activation.mouse_button.clone();
         drop(config);
         let state = self.activation.lock().await;
+        let fullscreen_active = state.is_fullscreen_blocked();
         if state.is_open() {
             *self.menu_open_observed_at.lock().await = Some(Instant::now());
         }
@@ -492,6 +494,7 @@ impl Backend {
             backend_available: true,
             renderer_available,
             menu_open: state.is_open(),
+            fullscreen_active,
             shortcut,
             mode,
             activation_type,
@@ -797,6 +800,9 @@ impl Backend {
         let _operation = self.portal_operation.lock().await;
         let _config_operation = self.config_operation.lock().await;
         let mut changed = self.config.read().await.clone();
+        let device_changed = changed.activation.input_type != device;
+        let button_changed = device == super::config::ActivationType::Mouse
+            && changed.activation.mouse_button.as_deref() != Some(button.as_str());
         changed.activation.input_type = device;
         changed.activation.mouse_button = if device == super::config::ActivationType::Mouse {
             Some(button)
@@ -804,11 +810,20 @@ impl Backend {
             None
         };
         let was_enabled = changed.activation.enabled;
-        changed.activation.enabled = false;
+        if device_changed {
+            changed.activation.enabled = false;
+        }
         self.save_update(changed).await?;
-        self.stop_mouse_helper().await;
-        if was_enabled && let Some(session) = self.portal_session.lock().await.take() {
-            session.close().await;
+        if device_changed {
+            self.stop_mouse_helper().await;
+            if was_enabled && let Some(session) = self.portal_session.lock().await.take() {
+                session.close().await;
+            }
+        } else if button_changed && was_enabled && device == super::config::ActivationType::Mouse {
+            self.stop_mouse_helper().await;
+            drop(_config_operation);
+            drop(_operation);
+            self.set_global_activation_enabled(true).await?;
         }
         Ok(())
     }
@@ -817,6 +832,18 @@ impl Backend {
     async fn show_menu(&self) -> fdo::Result<()> {
         self.activation.lock().await.handle(InputEvent::Show, &[]);
         Ok(())
+    }
+
+    #[zbus(name = "SetFullscreenActive")]
+    async fn set_fullscreen_active(&self, active: bool) {
+        let mut state = self.activation.lock().await;
+        let transition = state.set_fullscreen_blocked(active);
+        if active {
+            tracing::info!(
+                ?transition,
+                "radial menu disabled while a fullscreen window is active"
+            );
+        }
     }
 
     #[zbus(name = "HideMenu")]
@@ -833,6 +860,11 @@ impl Backend {
 
     #[zbus(name = "SelectSlot")]
     async fn select_slot(&self, index: u32) -> fdo::Result<String> {
+        if self.activation.lock().await.is_fullscreen_blocked() {
+            return Err(to_dbus_error(
+                "Radial Keys is disabled while a fullscreen window is active",
+            ));
+        }
         let config = self.config.read().await;
         let actions = config
             .slots
@@ -853,6 +885,11 @@ impl Backend {
     async fn activate_slot(&self, index: u32) -> fdo::Result<String> {
         if index >= 8 {
             return Err(to_dbus_error("slot index must be between 0 and 7"));
+        }
+        if self.activation.lock().await.is_fullscreen_blocked() {
+            return Err(to_dbus_error(
+                "Radial Keys is disabled while a fullscreen window is active",
+            ));
         }
         let renderer_is_live = self
             .renderer_last_seen

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.farukylmz0550.radielkeys</id>
+  <name>Radial Keys</name>
+  <summary>Open a radial menu of actions with your mouse</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <developer id="github.com/farukylmz0550">
+    <name>farukylmz0550</name>
+  </developer>
+  <description>
+    <p>Radial Keys opens a configurable eight-segment action menu and can run built-in actions or Python macros.</p>
+  </description>
+  <launchable type="desktop-id">io.github.farukylmz0550.radielkeys.desktop</launchable>
+  <url type="homepage">https://github.com/farukylmz0550/radielkeys</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="2.0.0" date="2026-11-23">
+      <description>
+        <p>Radial Keys now provides four complete action profiles, user-created profiles, action descriptions on hover, and automatic deactivation while a full-screen window is active. Built-in desktop actions work through the host session in Flatpak.</p>
+      </description>
+    </release>
+  </releases>
+</component>

@@ -1,0 +1,44 @@
+app-id: io.github.farukylmz0550.radielkeys
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: radial-keys-flatpak
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=all
+  - --own-name=io.github.radialkeys.Service
+  - --talk-name=org.freedesktop.Flatpak
+  - --talk-name=org.kde.KWin
+  - --talk-name=org.mpris.MediaPlayer2.*
+
+modules:
+  - name: radial-keys
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      - |
+        mkdir -p .cargo
+        cp cargo/config .cargo/config.toml
+        export CARGO_HOME="$PWD/.cargo-home"
+        cargo build --release --locked --offline -p radial-keys
+      - install -Dm755 target/release/radial-keys /app/bin/radial-keys
+      - cmake -S frontend/qt -B build-frontend -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/app
+      - cmake --build build-frontend --parallel "$FLATPAK_BUILDER_N_JOBS"
+      - cmake --install build-frontend
+      - install -Dm755 packaging/flatpak/radial-keys-flatpak /app/bin/radial-keys-flatpak
+      - install -Dm644 packaging/flatpak/io.github.farukylmz0550.radielkeys.desktop /app/share/applications/io.github.farukylmz0550.radielkeys.desktop
+      - install -Dm644 packaging/flatpak/io.github.farukylmz0550.radielkeys.metainfo.xml /app/share/metainfo/io.github.farukylmz0550.radielkeys.metainfo.xml
+      - install -Dm644 assets/radial-keys-logo.svg /app/share/icons/hicolor/scalable/apps/io.github.farukylmz0550.radielkeys.svg
+    sources:
+      - type: dir
+        path: ../..
+      - cargo-sources.json

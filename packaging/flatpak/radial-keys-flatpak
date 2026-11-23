@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+/app/bin/radial-keys &
+backend_pid=$!
+
+cleanup() {
+    kill -TERM "$backend_pid" 2>/dev/null || true
+    wait "$backend_pid" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+/app/bin/radial-keys-frontend "$@"

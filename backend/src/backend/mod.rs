@@ -1,6 +1,7 @@
 pub(super) mod config;
 pub(super) mod dbus;
 pub(super) mod input;
+pub(super) mod kwin;
 pub(super) mod macros;
 pub(super) mod paths;
 pub(super) mod portal;

@@ -1,3 +1,27 @@
+radial-keys (2.0.0-1) unstable; urgency=medium
+
+  * Add four complete action profiles and support user-created profiles.
+  * Show action descriptions when hovering over menu icons.
+  * Disable activation in full-screen windows and pass the mouse button through.
+  * Make Flatpak built-in desktop actions run against host applications.
+
+ -- farukylmz0550 <219123924+farukylmz0550@users.noreply.github.com>  Mon, 23 Nov 2026 23:05:00 +0300
+
+radial-keys (1.3.0-1) unstable; urgency=medium
+
+  * Add subtle click-wheel-inspired sound feedback when moving between menu segments.
+
+ -- farukylmz0550 <219123924+farukylmz0550@users.noreply.github.com>  Mon, 23 Nov 2026 21:00:00 +0300
+
+radial-keys (1.2.0-1) unstable; urgency=medium
+
+  * Keep activation enabled while changing the trigger button.
+  * Hide windows from the taskbar while the full-screen radial menu is open.
+  * Provide four ready-to-use actions for new configurations and disable
+    keyboard activation by default.
+
+ -- farukylmz0550 <219123924+farukylmz0550@users.noreply.github.com>  Mon, 23 Nov 2026 20:00:00 +0300
+
 radial-keys (1.1.0-1) unstable; urgency=medium
 
   * Add sixteen GUI-configurable built-in macros and an in-app Python editor.

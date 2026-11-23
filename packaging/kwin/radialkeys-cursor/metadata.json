@@ -4,7 +4,7 @@
         "Description": "Shares the compositor cursor position with Radial Keys",
         "Icon": "input-mouse",
         "Id": "radialkeys-cursor",
-        "Version": "1.1.0",
+        "Version": "2.0.0",
         "License": "GPL-3.0-only"
     },
     "X-Plasma-API": "javascript",

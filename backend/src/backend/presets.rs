@@ -38,7 +38,7 @@ const PRESETS: &[PresetInfo] = &[
         "Open website",
         "Open an HTTP or HTTPS address in the default browser.",
         &["Website URL"],
-        &["https://example.com"],
+        &["https://www.youtube.com"],
         "open-website.svg",
     ),
     preset(

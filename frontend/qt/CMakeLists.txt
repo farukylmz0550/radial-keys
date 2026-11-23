@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
-project(radial-keys-frontend VERSION 1.1.0 LANGUAGES CXX)
+project(radial-keys-frontend VERSION 2.0.0 LANGUAGES CXX)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 DBus)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 DBus Multimedia)
 
 qt_standard_project_setup(REQUIRES 6.5)
 if(QT_KNOWN_POLICY_QTP0004)
@@ -51,6 +51,12 @@ qt_add_resources(radial-keys-frontend radial_keys_branding
     FILES ../../assets/radial-keys-logo.svg
 )
 
+qt_add_resources(radial-keys-frontend radial_keys_sounds
+    PREFIX "/sounds"
+    BASE "${CMAKE_CURRENT_SOURCE_DIR}/../../assets/sounds"
+    FILES ../../assets/sounds/selection-tick.wav
+)
+
 target_link_libraries(radial-keys-frontend PRIVATE
     Qt6::Core
     Qt6::Gui
@@ -58,6 +64,7 @@ target_link_libraries(radial-keys-frontend PRIVATE
     Qt6::Quick
     Qt6::QuickControls2
     Qt6::DBus
+    Qt6::Multimedia
 )
 
 install(TARGETS radial-keys-frontend RUNTIME DESTINATION bin)

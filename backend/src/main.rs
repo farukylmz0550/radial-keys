@@ -26,13 +26,23 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("failed to acquire the radial-keys session bus name")?;
 
+    if let Err(error) = crate::backend::kwin::install_fullscreen_monitor(&connection).await {
+        tracing::warn!(%error, "could not enable fullscreen activation blocking");
+    }
+
     let unique_name = connection
         .unique_name()
         .map(ToString::to_string)
         .unwrap_or_else(|| "unknown".into());
     tracing::info!(portal = %portal, unique_name, "Radial Keys backend ready");
 
-    tokio::signal::ctrl_c().await?;
+    let mut terminate_signal =
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    tokio::select! {
+        result = tokio::signal::ctrl_c() => result?,
+        _ = terminate_signal.recv() => {},
+    }
+    crate::backend::kwin::unload_fullscreen_monitor(&connection).await;
     macro_processes.terminate_all().await;
     Ok(())
 }

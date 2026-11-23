@@ -1,38 +1,84 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Window
+import QtMultimedia
 
 Window {
     id: overlay
     property bool menuVisible: false
     property point cursorPosition: Qt.point(0, 0)
     property int selectedIndex: -1
+    property int lastAudibleSelection: -1
     property bool discardSelectedAction: false
     signal cancelRequested()
+
+    SoundEffect {
+        id: selectionSound
+        source: "qrc:/sounds/selection-tick.wav"
+        volume: 0.48
+    }
+
+    onSelectedIndexChanged: {
+        if (menuVisible && selectedIndex >= 0) {
+            if (lastAudibleSelection >= 0 && selectedIndex !== lastAudibleSelection)
+                selectionSound.play()
+            lastAudibleSelection = selectedIndex
+        } else if (!menuVisible) {
+            lastAudibleSelection = -1
+        }
+    }
 
     Connections {
         target: backend
         function onStateChanged() { canvas.requestPaint() }
     }
 
-    visibility: menuVisible ? Window.FullScreen : Window.Hidden
+    // Keep the overlay screen-sized without marking it as fullscreen. Plasma
+    // hides auto-hide panels when a fullscreen surface is mapped.
+    visibility: menuVisible ? Window.Windowed : Window.Hidden
     color: "transparent"
-    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+    // A splash surface is omitted from task switchers and taskbars by KDE,
+    // while retaining normal pointer and keyboard input for the radial menu.
+    flags: Qt.SplashScreen | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     transientParent: null
     screen: Application.screens.length > 0
             ? Application.screens[Math.max(0, Math.min(backend.cursorScreenIndex, Application.screens.length - 1))]
             : null
+    x: Screen.virtualX
+    y: Screen.virtualY
+    width: Screen.width
+    height: Screen.height
     title: qsTr("Radial Keys menu")
 
     readonly property real outerRadius: 112
     readonly property real deadZone: 28
+    readonly property real segmentRadius: (deadZone + outerRadius) / 2
     readonly property real centerX: cursorPosition.x - Screen.virtualX
     readonly property real centerY: cursorPosition.y - Screen.virtualY
+
+    function actionDescription(slot) {
+        if (!slot)
+            return ""
+        const preset = slot.preset
+        if (preset) {
+            const presetIndex = backend.presetIndex(preset.id)
+            const definition = presetIndex >= 0 ? backend.builtinMacros[presetIndex] : null
+            let description = definition ? definition.description : qsTr("Run this built-in action.")
+            const parameters = preset.parameters || []
+            if (parameters.length > 0)
+                description += "\n" + parameters.join(" · ")
+            return slot.label + "\n" + description
+        }
+        if (slot.action && slot.action.length > 0)
+            return slot.label + "\n" + qsTr("Run this Python macro in a separate process.")
+        return slot.label + "\n" + qsTr("No action is assigned.")
+    }
 
     onMenuVisibleChanged: {
         if (menuVisible) {
             discardSelectedAction = false
         } else {
-            if (selectedIndex >= 0 && !discardSelectedAction)
+            if (selectedIndex >= 0 && !discardSelectedAction && !backend.fullscreenActive)
                 backend.activateSlot(selectedIndex)
             selectedIndex = -1
             discardSelectedAction = false
@@ -82,10 +128,10 @@ Window {
             required property int index
             required property var modelData
             z: 1
-            width: 28
-            height: 28
-            x: overlay.centerX + Math.cos(-Math.PI / 2 + index * Math.PI / 4) * 48 - width / 2
-            y: overlay.centerY + Math.sin(-Math.PI / 2 + index * Math.PI / 4) * 48 - height / 2
+            width: 34
+            height: 34
+            x: overlay.centerX + Math.cos(-Math.PI / 2 + index * Math.PI / 4) * overlay.segmentRadius - width / 2
+            y: overlay.centerY + Math.sin(-Math.PI / 2 + index * Math.PI / 4) * overlay.segmentRadius - height / 2
             source: modelData.preset && modelData.preset.id === "microphone_toggle"
                 ? backend.fileUrl(backend.microphoneStateKnown && backend.microphoneMuted
                     ? "qrc:/icons/microphone-muted.svg" : "qrc:/icons/microphone-unmuted.svg")
@@ -96,6 +142,14 @@ Window {
             smooth: true
             asynchronous: true
             visible: modelData.icon && modelData.icon.length > 0
+
+            HoverHandler {
+                id: iconHover
+                acceptedDevices: PointerDevice.Mouse
+            }
+            ToolTip.visible: iconHover.hovered
+            ToolTip.delay: 700
+            ToolTip.text: overlay.actionDescription(modelData)
         }
     }
 
@@ -141,7 +195,9 @@ Window {
                 context.fillStyle = "#ffffff"
                 const slots = backend.menuSlots
                 const label = slots.length > index ? slots[index].label : qsTr("Slot %1").arg(index + 1)
-                context.fillText(label, labelX, labelY, 68)
+                const slotIcon = slots.length > index ? slots[index].icon : ""
+                if (!slotIcon || slotIcon.length === 0)
+                    context.fillText(label, labelX, labelY, 68)
             }
 
             context.beginPath()

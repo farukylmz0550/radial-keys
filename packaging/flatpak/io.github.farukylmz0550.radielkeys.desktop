@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Radial Keys
+Comment=Open a radial menu of actions with your mouse
+Exec=radial-keys-flatpak
+Icon=io.github.farukylmz0550.radielkeys
+Terminal=false
+Categories=Utility;Accessibility;
+Keywords=radial;menu;mouse;macros;
+StartupNotify=false

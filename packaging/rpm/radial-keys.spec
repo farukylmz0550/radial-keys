@@ -1,5 +1,5 @@
 Name:           radial-keys
-Version:        1.1.0
+Version:        2.0.0
 Release:        1%{?dist}
 Summary:        Customizable radial action menu for Linux
 License:        GPL-3.0-only
@@ -59,5 +59,14 @@ install -Dpm0644 assets/radial-keys-logo.svg \
 %{_datadir}/icons/hicolor/scalable/apps/io.github.radialkeys.RadialKeys.svg
 
 %changelog
+* Mon Nov 23 2026 farukylmz0550 <219123924+farukylmz0550@users.noreply.github.com> - 2.0.0-1
+- Add Flatpak packaging, full-screen-aware activation, complete action profiles, custom profiles, and hover descriptions
+
+* Mon Nov 23 2026 farukylmz0550 <219123924+farukylmz0550@users.noreply.github.com> - 1.3.0-1
+- Add click-wheel-inspired sound feedback when moving between menu segments
+
+* Mon Nov 23 2026 farukylmz0550 <219123924+farukylmz0550@users.noreply.github.com> - 1.2.0-1
+- Keep activation enabled while changing the trigger button, hide windows while the full-screen radial menu is open, and ship four default actions
+
 * Sun Nov 22 2026 farukylmz0550 <219123924+farukylmz0550@users.noreply.github.com> - 1.1.0-1
 - Add GUI-managed built-in and Python macros, process controls, integrity checks, and application icon

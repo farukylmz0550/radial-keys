@@ -6,10 +6,11 @@ Radial Keys uses the session bus. The backend owns `io.github.radialkeys.Service
 | --- | --- | --- |
 | `Ping` | `() -> s` | Returns `pong`. |
 | `GetVersion` | `() -> s` | Returns the backend package version. |
-| `GetStatus` | `() -> s` | Returns JSON status, including renderer availability, activation type, configured mouse button, and mouse helper status. |
+| `GetStatus` | `() -> s` | Returns JSON status, including renderer availability, activation type, configured mouse button, mouse helper status, and whether a full-screen window blocks activation. |
 | `RendererHeartbeat` | `() -> ()` | Marks the renderer alive; status expires after three seconds without a heartbeat. |
 | `RendererDisconnected` | `() -> ()` | Clears the renderer status when it exits normally. |
 | `SetCursorPosition` | `(i, i) -> ()` | Stores compositor-reported global pointer coordinates for renderer placement. |
+| `SetFullscreenActive` | `(b) -> ()` | Updates the KWin full-screen block state and closes an open menu when the value becomes true. |
 | `GetConfiguration` | `() -> s` | Returns TOML configuration. |
 | `GetSlots` | `() -> s` | Returns the eight slot labels, macro paths, and icon paths as JSON. |
 | `GetBuiltinMacros` | `() -> s` | Returns the built-in macro catalog, parameter definitions, and icons as JSON. |

@@ -15,6 +15,8 @@ pub enum MouseError {
         path: PathBuf,
         source: std::io::Error,
     },
+    #[error("all compatible mouse devices are busy; close other mouse remapping tools and retry")]
+    Busy,
     #[error("the selected mouse button '{0}' is not supported by the detected mouse")]
     UnsupportedButton(String),
     #[error("cannot create the virtual mouse relay: {0}")]
@@ -32,25 +34,35 @@ impl MouseRunner {
     pub fn connect(button: &str) -> Result<Self, MouseError> {
         let trigger =
             key_code(button).ok_or_else(|| MouseError::UnsupportedButton(button.to_owned()))?;
-        let path = discover_mouse(trigger, button)?;
-        let mut device = Device::open(&path).map_err(|source| MouseError::Open {
-            path: path.clone(),
-            source,
-        })?;
-        let name = device.name().unwrap_or("Mouse").to_owned();
-
-        let supported_keys = device.supported_keys().ok_or(MouseError::NoDevice)?;
-        if !supported_keys.contains(trigger) {
-            return Err(MouseError::UnsupportedButton(button.to_owned()));
+        let paths = discover_mice(trigger, button)?;
+        let mut selected = None;
+        let mut busy = false;
+        for path in paths {
+            let mut device = Device::open(&path).map_err(|source| MouseError::Open {
+                path: path.clone(),
+                source,
+            })?;
+            match device.grab() {
+                Ok(()) => {
+                    selected = Some((path, device));
+                    break;
+                }
+                Err(source) if source.raw_os_error() == Some(nix::libc::EBUSY) => busy = true,
+                Err(source) => return Err(MouseError::Open { path, source }),
+            }
         }
+        let Some((path, device)) = selected else {
+            return if busy {
+                Err(MouseError::Busy)
+            } else {
+                Err(MouseError::NoDevice)
+            };
+        };
+        let name = device.name().unwrap_or("Mouse").to_owned();
+        let supported_keys = device.supported_keys().ok_or(MouseError::NoDevice)?;
         let relative_axes = device
             .supported_relative_axes()
             .ok_or(MouseError::NoDevice)?;
-        if !relative_axes.contains(RelativeAxisCode::REL_X)
-            || !relative_axes.contains(RelativeAxisCode::REL_Y)
-        {
-            return Err(MouseError::NoDevice);
-        }
 
         let builder = evdev::uinput::VirtualDevice::builder()
             .map_err(MouseError::Relay)?
@@ -68,12 +80,8 @@ impl MouseRunner {
         };
         let relay = builder.build().map_err(MouseError::Relay)?;
 
-        // Grab only the first detected relative mouse. Every non-trigger event
-        // is relayed to uinput; dropping this device handle releases the grab.
-        device.grab().map_err(|source| MouseError::Open {
-            path: path.clone(),
-            source,
-        })?;
+        // A mouse remapper may already hold the first device. We skip busy
+        // devices and relay from the first compatible device we can grab.
         let stream = match device.into_event_stream() {
             Ok(stream) => stream,
             Err(source) => return Err(MouseError::Open { path, source }),
@@ -108,14 +116,20 @@ impl MouseRunner {
                 })?;
 
             if event.event_type() == EventType::KEY && event.code() == self.trigger.code() {
-                match event.value() {
-                    1 => {
-                        activation.lock().await.handle(InputEvent::Activated, &[]);
+                let mut state = activation.lock().await;
+                if state.is_fullscreen_blocked() {
+                    drop(state);
+                    self.relay.emit(&[event]).map_err(MouseError::Relay)?;
+                } else {
+                    match event.value() {
+                        1 => {
+                            state.handle(InputEvent::Activated, &[]);
+                        }
+                        0 => {
+                            state.handle(InputEvent::Deactivated, &[]);
+                        }
+                        _ => {} // Ignore kernel key-repeat events.
                     }
-                    0 => {
-                        activation.lock().await.handle(InputEvent::Deactivated, &[]);
-                    }
-                    _ => {} // Ignore kernel key-repeat events.
                 }
             } else if event.event_type() != EventType::SYNCHRONIZATION {
                 self.relay.emit(&[event]).map_err(MouseError::Relay)?;
@@ -135,7 +149,7 @@ fn key_code(button: &str) -> Option<KeyCode> {
     }
 }
 
-fn discover_mouse(trigger: KeyCode, button: &str) -> Result<PathBuf, MouseError> {
+fn discover_mice(trigger: KeyCode, button: &str) -> Result<Vec<PathBuf>, MouseError> {
     let mut devices = fs::read_dir("/dev/input")
         .map_err(|_| MouseError::NoDevice)?
         .filter_map(Result::ok)
@@ -149,6 +163,7 @@ fn discover_mouse(trigger: KeyCode, button: &str) -> Result<PathBuf, MouseError>
     devices.sort();
 
     let mut found_relative_mouse = false;
+    let mut matching = Vec::new();
     for path in devices {
         let Ok(device) = Device::open(&path) else {
             continue;
@@ -182,11 +197,13 @@ fn discover_mouse(trigger: KeyCode, button: &str) -> Result<PathBuf, MouseError>
             .supported_keys()
             .is_some_and(|keys| keys.contains(trigger))
         {
-            return Ok(path);
+            matching.push(path);
         }
     }
 
-    if found_relative_mouse {
+    if !matching.is_empty() {
+        Ok(matching)
+    } else if found_relative_mouse {
         Err(MouseError::UnsupportedButton(button.to_owned()))
     } else {
         Err(MouseError::NoDevice)

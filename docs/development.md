@@ -27,9 +27,9 @@ does not need to interact with the desktop currently in use.
 
 The Qt 6/QML renderer lives in `frontend/qt/`. Build it with `cmake -S frontend/qt -B build/frontend -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr && cmake --build build/frontend --parallel`. On Plasma, the app uses KDE's `org.kde.desktop` Qt Quick Controls style when available, unless `QT_QUICK_CONTROLS_STYLE` is explicitly set. The settings window uses a dark palette with white text for active, inactive, and disabled controls; native KDE file dialogs retain the desktop's own theme.
 
-## User service
+## Native package user services
 
-The Rust backend and Qt renderer have separate user units. They do not request elevated privileges and are not enabled automatically by package installation. After installing a package, enable both with:
+Native packages include separate backend and renderer user units. They are not enabled automatically. After installing a native package, enable both with:
 
 ```sh
 systemctl --user enable --now io.github.radialkeys.Service.service io.github.radialkeys.Renderer.service
@@ -46,11 +46,19 @@ systemctl --user disable --now io.github.radialkeys.Renderer.service io.github.r
 The repository includes:
 
 - Debian/Ubuntu metadata in `debian/`, built with `dpkg-buildpackage -us -uc`.
-- Fedora/RPM spec in `packaging/rpm/radial-keys.spec`; create a versioned source archive with `git archive --format=tar.gz --prefix=radial-keys-1.1.0/ -o radial-keys-1.1.0.tar.gz HEAD`, place it in the RPM source directory, then build with `rpmbuild -ba`.
+- Fedora/RPM spec in `packaging/rpm/radial-keys.spec`; create a versioned source archive with `git archive --format=tar.gz --prefix=radial-keys-2.0.0/ -o radial-keys-2.0.0.tar.gz HEAD`, place it in the RPM source directory, then build with `rpmbuild -ba`.
 - Arch PKGBUILD in `packaging/arch/PKGBUILD`; it is checkout-oriented and builds from the repository root with `makepkg`.
 
-For a release, keep the Cargo, CMake, Debian, RPM, Arch, and KWin metadata versions aligned. Package installation does not enable either user service.
+## Flatpak
+
+Flatpak is the recommended install. Follow [docs/flatpak.md](flatpak.md) to build and install locally. Its launcher runs the backend with the renderer; closing the settings window leaves the service active for the current app session.
+
+## Release checklist
+
+For a versioned release, update the Cargo, CMake, Debian, RPM, Arch, KWin metadata, and AppStream versions together. Regenerate the offline Cargo source list if Rust dependencies change. Build and install the Flatpak, review the docs and release notes, commit the changes, push the branch and version tag, then publish the GitHub release.
+
+Native package installation does not enable either user service automatically.
 
 ## Environment limits
 
-The development host has Rust, CMake, and Qt 6 development packages. The Qt frontend builds successfully. The live Plasma Wayland session uses the XDG GlobalShortcuts portal for activation and a KWin script only for compositor cursor coordinates.
+The development host has Rust, CMake, and Qt 6 development packages. On Plasma Wayland, the XDG GlobalShortcuts portal handles optional keyboard activation. KWin supplies pointer coordinates and reports full-screen state; activation is paused while a full-screen window is active.

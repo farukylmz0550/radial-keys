@@ -126,11 +126,21 @@ impl MacroProcessManager {
             MacroInvocation::Process(command) => command,
             MacroInvocation::ToggleDesktop => toggle_desktop_command().await?,
         };
+        // Desktop tools such as playerctl, wpctl, Spectacle and user-selected
+        // applications belong to the host session, not the KDE runtime. Run
+        // built-in actions through Flatpak's explicit host launcher. Python
+        // macros continue through start_python and remain inside the sandbox.
+        let mut host_args = vec!["--host".to_owned(), command.program];
+        host_args.extend(command.args);
+        let host_command = CommandSpec {
+            program: "flatpak-spawn".into(),
+            args: host_args,
+        };
         self.start_command(
             slot,
             label,
             format!("preset:{}", preset.id),
-            command,
+            host_command,
             single_instance,
             timeout_seconds,
         )
@@ -344,8 +354,14 @@ pub fn sha256_bytes(bytes: &[u8]) -> String {
 async fn toggle_desktop_command() -> Result<CommandSpec, MacroError> {
     let query = tokio::time::timeout(
         Duration::from_secs(5),
-        Command::new("qdbus6")
-            .args(["org.kde.KWin", "/KWin", "org.kde.KWin.showingDesktop"])
+        Command::new("flatpak-spawn")
+            .args([
+                "--host",
+                "qdbus6",
+                "org.kde.KWin",
+                "/KWin",
+                "org.kde.KWin.showingDesktop",
+            ])
             .output(),
     )
     .await

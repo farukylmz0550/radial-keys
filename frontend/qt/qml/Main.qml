@@ -7,11 +7,25 @@ import "menu"
 
 ApplicationWindow {
     id: settings
+    property bool settingsVisible: true
     width: 760
     height: 760
     minimumWidth: 620
     minimumHeight: 620
-    visible: true
+    visible: settingsVisible && !backend.menuOpen
+    onClosing: function(close) {
+        settingsVisible = false
+        close.accepted = false
+    }
+
+    Connections {
+        target: backend
+        function onMenuOpenChanged() {
+            if (backend.menuOpen)
+                settings.settingsVisible = false
+        }
+    }
+
     title: qsTr("Radial Keys")
     color: "#202124"
     palette.window: "#202124"
@@ -59,6 +73,47 @@ ApplicationWindow {
         case "north-west": return qsTr("North-west")
         default: return qsTr("Direction")
         }
+    }
+
+    readonly property var actionProfiles: [
+        { name: qsTr("Media"), slots: [
+            ["Play / pause", "media_play_pause", "media-play-pause.svg"], ["Previous track", "media_previous", "media-previous.svg"], ["Next track", "media_next", "media-next.svg"], ["Stop", "media_stop", "media-stop.svg"], ["Volume up", "volume_up", "volume-up.svg"], ["Volume down", "volume_down", "volume-down.svg"], ["Spotify", "open_website", "open-website.svg", ["https://open.spotify.com"]], ["YouTube", "open_website", "open-website.svg", ["https://www.youtube.com"]]
+        ]},
+        { name: qsTr("Productivity"), slots: [
+            ["Open terminal", "launch_application", "launch-application.svg", ["konsole"]], ["Downloads", "open_folder", "open-folder.svg", ["~/Downloads"]], ["Full screenshot", "screenshot_full", "screenshot-full.svg"], ["Area screenshot", "screenshot_region", "screenshot-region.svg"], ["Show desktop", "show_desktop", "show-desktop.svg"], ["Lock screen", "lock_screen", "lock-screen.svg"], ["Netflix", "open_website", "open-website.svg", ["https://www.netflix.com"]], ["Play / pause", "media_play_pause", "media-play-pause.svg"]
+        ]},
+        { name: qsTr("System"), slots: [
+            ["Mute", "volume_toggle", "volume-toggle.svg"], ["Volume up", "volume_up", "volume-up.svg"], ["Volume down", "volume_down", "volume-down.svg"], ["Microphone", "microphone_toggle", "microphone-unmuted.svg"], ["Screenshot", "screenshot_full", "screenshot-full.svg"], ["Show desktop", "show_desktop", "show-desktop.svg"], ["Lock screen", "lock_screen", "lock-screen.svg"], ["Netflix", "open_website", "open-website.svg", ["https://www.netflix.com"]]
+        ]},
+        { name: qsTr("Gaming"), slots: [
+            ["Play / pause", "media_play_pause", "media-play-pause.svg"], ["Volume up", "volume_up", "volume-up.svg"], ["Volume down", "volume_down", "volume-down.svg"], ["Mute", "volume_toggle", "volume-toggle.svg"], ["Screenshot", "screenshot_full", "screenshot-full.svg"], ["Open Steam", "launch_application", "launch-application.svg", ["steam"]], ["Spotify", "open_website", "open-website.svg", ["https://open.spotify.com"]], ["YouTube", "open_website", "open-website.svg", ["https://www.youtube.com"]]
+        ]}
+    ]
+
+    function applyProfile(profileIndex) {
+        const slots = actionProfiles[profileIndex].slots
+        for (let i = 0; i < slots.length; ++i) {
+            const slot = slots[i]
+            backend.setSlotPreset(i, slot[0], slot[1], slot[3] || [], "qrc:/icons/" + slot[2])
+        }
+        backend.setActiveProfileName(actionProfiles[profileIndex].name)
+    }
+
+    function selectProfile(profileIndex) {
+        if (profileIndex < actionProfiles.length)
+            applyProfile(profileIndex)
+        else
+            backend.activateSavedProfile(profileIndex - actionProfiles.length)
+    }
+
+    function profileIndexByName(name) {
+        if (!name)
+            return 0
+        const names = actionProfiles.map(profile => profile.name)
+        for (let i = 0; i < backend.savedProfiles.length; ++i)
+            names.push(backend.savedProfiles[i].name)
+        const index = names.indexOf(name)
+        return index >= 0 ? index : 0
     }
 
     ColumnLayout {
@@ -112,20 +167,12 @@ ApplicationWindow {
                         spacing: 12
 
                         Label {
-                            text: qsTr("Activation input")
+                            text: qsTr("Mouse activation")
                             font.pixelSize: 20
                             font.weight: Font.DemiBold
                         }
-                        ComboBox {
-                            Layout.fillWidth: true
-                            Layout.maximumWidth: 360
-                            model: [qsTr("Keyboard shortcut"), qsTr("Mouse button")]
-                            currentIndex: backend.activationType === "mouse" ? 1 : 0
-                            onActivated: backend.setActivationDevice(currentIndex === 0 ? "keyboard" : "mouse", backend.mouseButton.length > 0 ? backend.mouseButton : "back")
-                        }
                         RowLayout {
                             Layout.fillWidth: true
-                            visible: backend.activationType === "mouse"
                             Label {
                                 Layout.fillWidth: true
                                 text: qsTr("Activation button")
@@ -140,14 +187,19 @@ ApplicationWindow {
                         }
                         Label {
                             Layout.fillWidth: true
-                            visible: backend.activationType === "mouse"
                             wrapMode: Text.WordWrap
                             color: "#ffffff"
                             text: qsTr("When enabled, Radial Keys reserves this button on the first detected mouse. Other mouse movement, buttons, and scrolling continue to work.")
                         }
+                        Label {
+                            Layout.fillWidth: true
+                            visible: backend.fullscreenActive
+                            wrapMode: Text.WordWrap
+                            color: "#f9c74f"
+                            text: qsTr("Radial Keys is temporarily disabled while a full-screen window is active.")
+                        }
                         RowLayout {
                             Layout.fillWidth: true
-                            visible: backend.activationType === "mouse"
                             Label {
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
@@ -155,55 +207,18 @@ ApplicationWindow {
                                 color: "#ffffff"
                             }
                             Button {
-                                text: backend.activationEnabled ? qsTr("Disable") : qsTr("Enable mouse button")
+                                text: backend.activationType !== "mouse"
+                                      ? qsTr("Use mouse activation")
+                                      : backend.activationEnabled ? qsTr("Disable") : qsTr("Enable mouse button")
                                 enabled: backend.serviceAvailable
-                                onClicked: backend.activationEnabled ? backend.disableGlobalActivation() : backend.enableGlobalActivation()
-                            }
-                        }
-                        Label {
-                            Layout.fillWidth: true
-                            visible: backend.activationType === "mouse" && !backend.activationEnabled
-                            wrapMode: Text.WordWrap
-                            color: "#ffffff"
-                            text: qsTr("The package grants session access to mouse devices and the virtual mouse relay. No keyboard input is read.")
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        height: 1
-                        color: "#474950"
-                        opacity: 0.35
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        visible: backend.activationType === "keyboard"
-                        spacing: 12
-
-                        Label {
-                            text: qsTr("Keyboard shortcut")
-                            font.pixelSize: 20
-                            font.weight: Font.DemiBold
-                        }
-                        Label {
-                            Layout.fillWidth: true
-                            wrapMode: Text.WordWrap
-                            text: qsTr("Press %1 once to open the menu and again to close it.").arg(backend.shortcut)
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Label {
-                                Layout.fillWidth: true
-                                text: backend.shortcutRegistered
-                                      ? qsTr("Shortcut is enabled")
-                                      : qsTr("Shortcut is disabled")
-                                color: "#ffffff"
-                            }
-                            Button {
-                                text: backend.activationEnabled ? qsTr("Disable") : qsTr("Enable %1").arg(backend.shortcut)
-                                enabled: backend.serviceAvailable
-                                onClicked: backend.activationEnabled ? backend.disableGlobalActivation() : warningDialog.open()
+                                onClicked: {
+                                    if (backend.activationType !== "mouse")
+                                        backend.setActivationDevice("mouse", backend.mouseButton.length > 0 ? backend.mouseButton : "back")
+                                    else if (backend.activationEnabled)
+                                        backend.disableGlobalActivation()
+                                    else
+                                        backend.enableGlobalActivation()
+                                }
                             }
                         }
                         Label {
@@ -211,7 +226,7 @@ ApplicationWindow {
                             visible: !backend.activationEnabled
                             wrapMode: Text.WordWrap
                             color: "#ffffff"
-                            text: qsTr("Enabling the shortcut asks your desktop to register it. You can disable it here at any time.")
+                            text: qsTr("The selected button is reserved on the first detected mouse. Other mouse movement, buttons, and scrolling continue to work.")
                         }
                     }
 
@@ -292,6 +307,34 @@ ApplicationWindow {
                 Layout.bottomMargin: 18
                 spacing: 12
 
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label { text: qsTr("Profile") }
+                    ComboBox {
+                        id: profilePicker
+                        model: settings.actionProfiles.map(profile => profile.name)
+                            .concat(backend.savedProfiles.map(profile => profile.name))
+                        currentIndex: settings.profileIndexByName(backend.activeProfileName)
+                        onActivated: settings.selectProfile(currentIndex)
+                        Accessible.name: qsTr("Radial menu profile")
+                    }
+                    Button {
+                        text: qsTr("Save profile")
+                        enabled: backend.menuSlots.length === 8
+                        onClicked: {
+                            profileNameField.text = profilePicker.currentIndex >= settings.actionProfiles.length
+                                ? backend.activeProfileName : qsTr("My profile")
+                            profileDialog.open()
+                        }
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: settings.palette.mid
+                        text: qsTr("Choose a ready-made layout or save the current eight actions as your own profile.")
+                    }
+                }
+
                 Label {
                     text: qsTr("Radial actions")
                     font.pixelSize: 20
@@ -364,6 +407,19 @@ ApplicationWindow {
                                     return presetIndex >= 0 ? backend.builtinMacros[presetIndex] : null
                                 }
 
+                                function actionTooltip() {
+                                    if (presetId.length > 0) {
+                                        const preset = currentPreset()
+                                        let description = preset ? preset.description : qsTr("Run this built-in action.")
+                                        if (parameterValues.length > 0)
+                                            description += "\n" + parameterValues.join(" · ")
+                                        return labelText + "\n" + description
+                                    }
+                                    return scriptText.length > 0
+                                        ? labelText + "\n" + qsTr("Run this Python macro in a separate process.")
+                                        : labelText + "\n" + qsTr("No action is assigned.")
+                                }
+
                                 function saveAction() {
                                     if (presetId.length > 0)
                                         backend.setSlotPreset(index, labelText, presetId, parameterValues, iconText)
@@ -407,6 +463,13 @@ ApplicationWindow {
                                         fillMode: Image.PreserveAspectFit
                                         visible: actionRow.iconText.length > 0
                                         Accessible.name: qsTr("Icon for slot %1").arg(actionRow.index + 1)
+                                        HoverHandler {
+                                            id: editorIconHover
+                                            acceptedDevices: PointerDevice.Mouse
+                                        }
+                                        ToolTip.visible: editorIconHover.hovered
+                                        ToolTip.delay: 700
+                                        ToolTip.text: actionRow.actionTooltip()
                                     }
                                     TextField {
                                         id: labelField
@@ -617,6 +680,38 @@ ApplicationWindow {
             wrapMode: Text.WordWrap
             color: settings.palette.windowText
             text: qsTr("The desktop will register %1 for Radial Keys. You can disable the shortcut here later.").arg(backend.shortcut)
+        }
+    }
+
+    Dialog {
+        id: profileDialog
+        modal: true
+        palette: settings.palette
+        title: qsTr("Save profile")
+        standardButtons: Dialog.Save | Dialog.Cancel
+        width: Math.min(settings.width - 48, 420)
+        x: (settings.width - width) / 2
+        y: (settings.height - height) / 2
+        onAccepted: backend.saveCurrentProfile(profileNameField.text)
+
+        contentItem: ColumnLayout {
+            spacing: 10
+            Label { text: qsTr("Profile name") }
+            TextField {
+                id: profileNameField
+                Layout.fillWidth: true
+                maximumLength: 32
+                color: settings.palette.text
+                placeholderText: qsTr("For example, Work or Streaming")
+                onAccepted: profileDialog.accept()
+            }
+            Label {
+                Layout.fillWidth: true
+                visible: backend.errorMessage.length > 0
+                wrapMode: Text.WordWrap
+                color: "#ffb4ab"
+                text: backend.errorMessage
+            }
         }
     }
 

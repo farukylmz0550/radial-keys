@@ -15,6 +15,7 @@ class BackendClient final : public QObject
     Q_PROPERTY(bool serviceAvailable READ serviceAvailable NOTIFY stateChanged)
     Q_PROPERTY(bool rendererAvailable READ rendererAvailable NOTIFY stateChanged)
     Q_PROPERTY(bool menuOpen READ menuOpen NOTIFY stateChanged)
+    Q_PROPERTY(bool fullscreenActive READ fullscreenActive NOTIFY stateChanged)
     Q_PROPERTY(bool activationEnabled READ activationEnabled NOTIFY stateChanged)
     Q_PROPERTY(bool shortcutRegistered READ shortcutRegistered NOTIFY stateChanged)
     Q_PROPERTY(QString shortcut READ shortcut NOTIFY stateChanged)
@@ -25,6 +26,8 @@ class BackendClient final : public QObject
     Q_PROPERTY(QPoint cursorPosition READ cursorPosition NOTIFY stateChanged)
     Q_PROPERTY(int cursorScreenIndex READ cursorScreenIndex NOTIFY stateChanged)
     Q_PROPERTY(QVariantList menuSlots READ menuSlots NOTIFY stateChanged)
+    Q_PROPERTY(QVariantList savedProfiles READ savedProfiles NOTIFY profilesChanged)
+    Q_PROPERTY(QString activeProfileName READ activeProfileName NOTIFY profilesChanged)
     Q_PROPERTY(QVariantList builtinMacros READ builtinMacros NOTIFY stateChanged)
     Q_PROPERTY(QVariantList runningMacros READ runningMacros NOTIFY stateChanged)
     Q_PROPERTY(QVariantList macroResults READ macroResults NOTIFY stateChanged)
@@ -40,6 +43,7 @@ public:
     bool serviceAvailable() const { return m_serviceAvailable; }
     bool rendererAvailable() const { return m_rendererAvailable; }
     bool menuOpen() const { return m_menuOpen; }
+    bool fullscreenActive() const { return m_fullscreenActive; }
     bool activationEnabled() const { return m_activationEnabled; }
     bool shortcutRegistered() const { return m_shortcutRegistered; }
     QString shortcut() const { return m_shortcut; }
@@ -50,6 +54,8 @@ public:
     QPoint cursorPosition() const { return m_cursorPosition; }
     int cursorScreenIndex() const;
     QVariantList menuSlots() const { return m_slots; }
+    QVariantList savedProfiles() const;
+    QString activeProfileName() const;
     QVariantList builtinMacros() const { return m_builtinMacros; }
     QVariantList runningMacros() const { return m_runningMacros; }
     QVariantList macroResults() const { return m_macroResults; }
@@ -66,6 +72,9 @@ public:
     Q_INVOKABLE void setSlot(int index, const QString &label, const QString &script, const QString &icon);
     Q_INVOKABLE void setSlotPreset(int index, const QString &label, const QString &presetId, const QVariantList &parameters, const QString &icon);
     Q_INVOKABLE void setSlotPython(int index, const QString &label, const QString &source, const QString &icon);
+    Q_INVOKABLE void saveCurrentProfile(const QString &name);
+    Q_INVOKABLE void activateSavedProfile(int index);
+    Q_INVOKABLE void setActiveProfileName(const QString &name);
     Q_INVOKABLE void activateSlot(int index);
     Q_INVOKABLE void acceptScriptUpdate(int index);
     Q_INVOKABLE void setMacroOptions(bool singleInstance, int timeoutSeconds);
@@ -79,6 +88,7 @@ public:
 
 signals:
     void stateChanged();
+    void profilesChanged();
 
 private slots:
     void pollStatus();
@@ -98,6 +108,7 @@ private:
     bool m_serviceAvailable = false;
     bool m_rendererAvailable = false;
     bool m_menuOpen = false;
+    bool m_fullscreenActive = false;
     bool m_activationEnabled = false;
     bool m_shortcutRegistered = false;
     QString m_shortcut = QStringLiteral("Ctrl+Shift+Y");

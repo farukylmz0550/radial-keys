@@ -67,12 +67,12 @@ fn default_key() -> String {
 impl Default for ActivationConfig {
     fn default() -> Self {
         Self {
-            input_type: ActivationType::Keyboard,
+            input_type: ActivationType::Mouse,
             key: default_key(),
             modifiers: vec!["Ctrl".into(), "Shift".into()],
             mode: ActivationMode::Toggle,
             enabled: false,
-            mouse_button: None,
+            mouse_button: Some("back".into()),
         }
     }
 }
@@ -133,10 +133,64 @@ impl Default for RadialConfig {
             .enumerate()
             .map(|(index, id)| SlotConfig {
                 id: id.into(),
-                label: format!("Slot {}", index + 1),
+                label: match index {
+                    0 => "Play / pause".into(),
+                    1 => "Volume down".into(),
+                    2 => "Volume up".into(),
+                    3 => "Toggle mute".into(),
+                    4 => "Next track".into(),
+                    5 => "Previous track".into(),
+                    6 => "Stop media".into(),
+                    7 => "Spotify".into(),
+                    _ => format!("Slot {}", index + 1),
+                },
                 action: String::new(),
-                icon: String::new(),
-                preset: None,
+                icon: match index {
+                    0 => "qrc:/icons/media-play-pause.svg".into(),
+                    1 => "qrc:/icons/volume-down.svg".into(),
+                    2 => "qrc:/icons/volume-up.svg".into(),
+                    3 => "qrc:/icons/volume-toggle.svg".into(),
+                    4 => "qrc:/icons/media-next.svg".into(),
+                    5 => "qrc:/icons/media-previous.svg".into(),
+                    6 => "qrc:/icons/media-stop.svg".into(),
+                    7 => "qrc:/icons/open-website.svg".into(),
+                    _ => String::new(),
+                },
+                preset: match index {
+                    0 => Some(BuiltinMacroConfig {
+                        id: "media_play_pause".into(),
+                        parameters: vec![],
+                    }),
+                    1 => Some(BuiltinMacroConfig {
+                        id: "volume_down".into(),
+                        parameters: vec![],
+                    }),
+                    2 => Some(BuiltinMacroConfig {
+                        id: "volume_up".into(),
+                        parameters: vec![],
+                    }),
+                    3 => Some(BuiltinMacroConfig {
+                        id: "volume_toggle".into(),
+                        parameters: vec![],
+                    }),
+                    4 => Some(BuiltinMacroConfig {
+                        id: "media_next".into(),
+                        parameters: vec![],
+                    }),
+                    5 => Some(BuiltinMacroConfig {
+                        id: "media_previous".into(),
+                        parameters: vec![],
+                    }),
+                    6 => Some(BuiltinMacroConfig {
+                        id: "media_stop".into(),
+                        parameters: vec![],
+                    }),
+                    7 => Some(BuiltinMacroConfig {
+                        id: "open_website".into(),
+                        parameters: vec!["https://open.spotify.com".into()],
+                    }),
+                    _ => None,
+                },
                 script_sha256: None,
             })
             .collect(),
@@ -281,8 +335,29 @@ impl ConfigStore {
         let text = fs::read_to_string(&self.path)?;
         let mut config: RadialConfig = toml::from_str(&text)?;
         config.validate()?;
-        let mut added_baselines = false;
+        let defaults = RadialConfig::default();
+        let mut changed = false;
+        for (index, slot) in config.slots.iter_mut().enumerate() {
+            if slot.action.is_empty() && slot.preset.is_none() {
+                let default_slot = &defaults.slots[index];
+                slot.label = default_slot.label.clone();
+                slot.icon = default_slot.icon.clone();
+                slot.preset = default_slot.preset.clone();
+                changed = true;
+            }
+        }
         for slot in &mut config.slots {
+            if let Some(preset) = &mut slot.preset
+                && preset.id == "open_website"
+                && preset
+                    .parameters
+                    .first()
+                    .is_some_and(|url| url == "https://example.com")
+            {
+                preset.parameters[0] = "https://www.youtube.com".into();
+                slot.label = "YouTube".into();
+                changed = true;
+            }
             if !slot.action.is_empty()
                 && slot.script_sha256.is_none()
                 && let Ok(path) = super::macros::validate_script_path(&slot.action)
@@ -290,10 +365,10 @@ impl ConfigStore {
             {
                 slot.action = path.display().to_string();
                 slot.script_sha256 = Some(hash);
-                added_baselines = true;
+                changed = true;
             }
         }
-        if added_baselines {
+        if changed {
             self.save(&config)?;
         }
         Ok(config)
@@ -343,15 +418,29 @@ mod tests {
     fn defaults_have_eight_slots_and_toggle_ctrl_shift_y() {
         let config = RadialConfig::default();
         assert_eq!(config.slots.len(), 8);
-        assert!(config.slots.iter().all(|slot| slot.icon.is_empty()));
+        assert!(config.slots[4..].iter().all(|slot| slot.icon.is_empty()));
+        assert_eq!(
+            config
+                .slots
+                .iter()
+                .filter(|slot| slot.preset.is_some())
+                .count(),
+            4
+        );
         assert_eq!(config.activation.shortcut(), "Ctrl+Shift+Y");
+        assert_eq!(config.activation.input_type, ActivationType::Mouse);
+        assert_eq!(config.activation.mouse_button.as_deref(), Some("back"));
         assert_eq!(config.activation.mode, ActivationMode::Toggle);
         config.validate().unwrap();
     }
 
     #[test]
     fn old_config_without_icon_fields_loads_with_empty_icons() {
-        let current = toml::to_string(&RadialConfig::default()).unwrap();
+        let mut config = RadialConfig::default();
+        for slot in &mut config.slots {
+            slot.icon.clear();
+        }
+        let current = toml::to_string(&config).unwrap();
         let legacy = current.replace("icon = \"\"\n", "");
         let parsed: RadialConfig = toml::from_str(&legacy).unwrap();
         assert!(parsed.slots.iter().all(|slot| slot.icon.is_empty()));

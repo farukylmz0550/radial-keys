@@ -259,6 +259,7 @@ pub struct ActivationState {
     open: bool,
     active: bool,
     dispatched: bool,
+    fullscreen_blocked: bool,
 }
 
 impl ActivationState {
@@ -268,15 +269,32 @@ impl ActivationState {
             open: false,
             active: false,
             dispatched: false,
+            fullscreen_blocked: false,
         }
     }
     pub fn is_open(&self) -> bool {
         self.open
     }
 
+    pub fn is_fullscreen_blocked(&self) -> bool {
+        self.fullscreen_blocked
+    }
+
+    pub fn set_fullscreen_blocked(&mut self, blocked: bool) -> Transition {
+        self.fullscreen_blocked = blocked;
+        if blocked && self.open {
+            self.handle(InputEvent::Escape, &[])
+        } else {
+            Transition::None
+        }
+    }
+
     pub fn handle(&mut self, event: InputEvent, actions: &[String]) -> Transition {
         match event {
             InputEvent::Activated => {
+                if self.fullscreen_blocked {
+                    return Transition::None;
+                }
                 if self.active {
                     return Transition::None;
                 }
@@ -320,6 +338,9 @@ impl ActivationState {
                 Transition::Cancelled
             }
             InputEvent::Show => {
+                if self.fullscreen_blocked {
+                    return Transition::None;
+                }
                 if self.open {
                     Transition::None
                 } else {
@@ -337,6 +358,9 @@ impl ActivationState {
                 }
             }
             InputEvent::Toggle => {
+                if self.fullscreen_blocked {
+                    return Transition::None;
+                }
                 self.active = false;
                 if self.open {
                     self.open = false;

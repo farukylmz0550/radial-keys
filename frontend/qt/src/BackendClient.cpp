@@ -11,6 +11,9 @@
 #include <QCursor>
 #include <QUrl>
 #include <QFile>
+#include <QSettings>
+#include <QStringList>
+#include <algorithm>
 
 namespace {
 const QString serviceName = QStringLiteral("io.github.radialkeys.Service");
@@ -46,6 +49,114 @@ BackendClient::~BackendClient()
 int BackendClient::cursorScreenIndex() const
 {
     return m_cursorScreen ? QGuiApplication::screens().indexOf(m_cursorScreen) : 0;
+}
+
+QVariantList BackendClient::savedProfiles() const
+{
+    QSettings settings;
+    const auto profiles = settings.value(QStringLiteral("profiles")).toJsonArray();
+    QVariantList result;
+    result.reserve(profiles.size());
+    for (const auto &profile : profiles) {
+        if (profile.isObject())
+            result.append(profile.toObject().toVariantMap());
+    }
+    return result;
+}
+
+QString BackendClient::activeProfileName() const
+{
+    QSettings settings;
+    return settings.value(QStringLiteral("activeProfile")).toString();
+}
+
+void BackendClient::saveCurrentProfile(const QString &name)
+{
+    const QString cleanName = name.trimmed();
+    if (cleanName.isEmpty() || cleanName.size() > 32 || m_slots.size() != 8) {
+        m_errorMessage = tr("Enter a profile name with 1 to 32 characters.");
+        emit stateChanged();
+        return;
+    }
+    const QStringList builtinNames {tr("Media"), tr("Productivity"), tr("System"), tr("Gaming")};
+    if (std::any_of(builtinNames.cbegin(), builtinNames.cend(), [&cleanName](const QString &builtin) {
+            return builtin.compare(cleanName, Qt::CaseInsensitive) == 0;
+        })) {
+        m_errorMessage = tr("Choose a name that is different from the built-in profiles.");
+        emit stateChanged();
+        return;
+    }
+
+    QSettings settings;
+    QJsonArray profiles = settings.value(QStringLiteral("profiles")).toJsonArray();
+    QJsonObject replacement {
+        {QStringLiteral("name"), cleanName},
+        {QStringLiteral("slots"), QJsonArray::fromVariantList(m_slots)},
+    };
+    bool replaced = false;
+    for (qsizetype i = 0; i < profiles.size(); ++i) {
+        const auto profile = profiles.at(i).toObject();
+        if (profile.value(QStringLiteral("name")).toString().compare(cleanName, Qt::CaseInsensitive) == 0) {
+            profiles.replace(i, replacement);
+            replaced = true;
+            break;
+        }
+    }
+    if (!replaced)
+        profiles.append(replacement);
+    settings.setValue(QStringLiteral("profiles"), profiles);
+    settings.setValue(QStringLiteral("activeProfile"), cleanName);
+    settings.sync();
+    m_errorMessage.clear();
+    emit profilesChanged();
+    emit stateChanged();
+}
+
+void BackendClient::activateSavedProfile(int index)
+{
+    const QVariantList profiles = savedProfiles();
+    if (index < 0 || index >= profiles.size())
+        return;
+    const QVariantMap profile = profiles.at(index).toMap();
+    const QString name = profile.value(QStringLiteral("name")).toString();
+    const QVariantList slotValues = profile.value(QStringLiteral("slots")).toList();
+    if (slotValues.size() != 8) {
+        m_errorMessage = tr("This profile does not contain eight actions.");
+        emit stateChanged();
+        return;
+    }
+    setActiveProfileName(name);
+    for (int i = 0; i < slotValues.size(); ++i) {
+        QVariantMap slot = slotValues.at(i).toMap();
+        QVariantMap preset = slot.value(QStringLiteral("preset")).toMap();
+        QVariantList parameters = preset.value(QStringLiteral("parameters")).toList();
+        if (preset.value(QStringLiteral("id")).toString() == QStringLiteral("open_website")
+            && !parameters.isEmpty()
+            && parameters.first().toString() == QStringLiteral("https://example.com")) {
+            parameters[0] = QStringLiteral("https://www.youtube.com");
+            preset.insert(QStringLiteral("parameters"), parameters);
+            slot.insert(QStringLiteral("preset"), preset);
+            slot.insert(QStringLiteral("label"), tr("YouTube"));
+        }
+        const QString presetId = preset.value(QStringLiteral("id")).toString();
+        const QString label = slot.value(QStringLiteral("label")).toString();
+        const QString icon = slot.value(QStringLiteral("icon")).toString();
+        if (!presetId.isEmpty()) {
+            setSlotPreset(i, label, presetId, parameters, icon);
+        } else {
+            setSlot(i, label, slot.value(QStringLiteral("action")).toString(), icon);
+        }
+    }
+}
+
+void BackendClient::setActiveProfileName(const QString &name)
+{
+    QSettings settings;
+    if (settings.value(QStringLiteral("activeProfile")).toString() == name)
+        return;
+    settings.setValue(QStringLiteral("activeProfile"), name);
+    settings.sync();
+    emit profilesChanged();
 }
 
 void BackendClient::pollStatus()
@@ -180,6 +291,7 @@ void BackendClient::updateFromStatus(const QString &json)
     const auto status = document.object();
     m_rendererAvailable = status.value(QStringLiteral("renderer_available")).toBool();
     m_menuOpen = status.value(QStringLiteral("menu_open")).toBool();
+    m_fullscreenActive = status.value(QStringLiteral("fullscreen_active")).toBool();
     m_activationEnabled = status.value(QStringLiteral("global_activation_enabled")).toBool();
     m_shortcutRegistered = status.value(QStringLiteral("global_shortcut_registered")).toBool();
     m_shortcut = status.value(QStringLiteral("shortcut")).toString(QStringLiteral("Ctrl+Shift+Y"));

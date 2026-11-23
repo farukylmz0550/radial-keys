@@ -64,7 +64,9 @@ relative mouse while active and relays unrelated events through uinput. Device
 classification is heuristic and support depends on the installed udev rules,
 session ACLs, and available uinput permissions.
 
-Built-in macros also run as the user and depend on desktop utilities such as
-`playerctl`, `wpctl`, `spectacle`, `loginctl`, and KDE's `qdbus6` where
-applicable. Their absence is reported as an execution error. These actions use
-direct executable-and-argument invocation, not a shell.
+Built-in macros run as the user and use desktop utilities such as `playerctl`,
+`wpctl`, `spectacle`, and `loginctl`. Flatpak launches these built-ins through
+`flatpak-spawn --host` so they can use host utilities and applications; Python
+macros continue to run in a separate process inside the Flatpak sandbox. Native
+packages invoke built-in executables directly. These actions use direct
+executable-and-argument invocation, not a shell.
